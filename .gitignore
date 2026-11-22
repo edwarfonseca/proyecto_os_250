@@ -18,3 +18,8 @@ dataset/ensayo_excedido.txt
 # Respaldos de la base de datos (contienen hashes de contraseñas)
 backups/
 *.sql.gz
+
+# Archivos temporales de LaTeX (docs/informe)
+docs/informe/*.log
+docs/informe/*.aux
+docs/informe/*.out

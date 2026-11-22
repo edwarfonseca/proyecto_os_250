@@ -1,0 +1,469 @@
+% =====================================================================
+% EntregaSegura · Documento técnico (formato IEEE, plantilla IEEEtran)
+% Compilar:  ./docs/informe/compilar.sh
+% =====================================================================
+\documentclass[conference,a4paper]{IEEEtran}
+
+% ---------- Datos de autoría (editar aquí) ----------
+\newcommand{\Autores}{Edwar Esteban Fonseca Jimenez, [Integrante 2], [Integrante 3]}
+\newcommand{\Correos}{[correo1]@uptc.edu.co, [correo2]@uptc.edu.co, [correo3]@uptc.edu.co}
+
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage[spanish,es-noshorthands,es-tabla,es-nodecimaldot,es-ucroman]{babel}
+\usepackage{amsmath,amssymb}
+\usepackage{cite}
+\usepackage{array,booktabs,multirow,tabularx}
+\usepackage{xcolor}
+\usepackage{listings}
+\usepackage{url}
+\def\UrlBreaks{\do\/\do-\do\_\do.\do=\do?\do\&}
+\Urlmuskip=0mu plus 1mu
+\usepackage{tikz}
+\usetikzlibrary{positioning,fit,arrows.meta,shapes.geometric,backgrounds,patterns.meta,calc}
+\usepackage{pgfplots}
+\pgfplotsset{compat=1.18}
+\usepgfplotslibrary{groupplots}
+\usepackage[hidelinks,pdfusetitle]{hyperref}
+\hypersetup{pdfauthor={\Autores},pdfsubject={Proyecto final de Sistemas Operativos},
+  pdfkeywords={contenedores, Docker, AWS, control de acceso, auditoría, PostgreSQL}}
+
+\addto\captionsspanish{\renewcommand{\figurename}{Fig.}}
+\renewcommand{\IEEEkeywordsname}{Palabras clave}
+
+% Paleta de las figuras (validada para daltonismo) y tinta de texto
+\definecolor{serieA}{HTML}{2A78D6}
+\definecolor{serieB}{HTML}{EB6834}
+\definecolor{serieBosc}{HTML}{A8431B}
+\definecolor{tinta}{HTML}{1D2430}
+
+\newcommand{\cod}[1]{\texttt{#1}}
+\lstset{basicstyle=\ttfamily\scriptsize, columns=fullflexible, keepspaces=true,
+  frame=single, rulecolor=\color{black!35}, xleftmargin=2pt, xrightmargin=2pt,
+  keywordstyle=\bfseries, morekeywords={UPDATE,SET,WHERE,SELECT,FROM,ORDER,BY,FOR,SKIP,LOCKED,LIMIT,RETURNING,AND}}
+
+\begin{document}
+
+\title{EntregaSegura: plataforma segura de recepción y análisis de entregas académicas con contenedores en AWS}
+
+\author{\IEEEauthorblockN{\Autores}
+\IEEEauthorblockA{Universidad Pedagógica y Tecnológica de Colombia (UPTC), Seccional Sogamoso\\
+Proyecto final de Sistemas Operativos · Docente: Mgtr. Fredy Alarcón · 2026\\
+\Correos}}
+
+\maketitle
+
+\begin{abstract}
+Se presenta EntregaSegura, una plataforma para la Corporación Educativa Altiplano (institución ficticia) que recibe entregas académicas en texto, las analiza en segundo plano (huella SHA-256, estadísticas y detección de copias idénticas) y garantiza que ningún estudiante acceda al trabajo de otro. El sistema se compone de cuatro contenedores (proxy, API, worker y base de datos) orquestados con Docker Compose y desplegados en una única instancia EC2 \cod{t3.small} de AWS Academy. La autorización combina control por roles con una verificación de propiedad del recurso; una regla de negocio propia (RN-1) cierra las entregas en la fecha límite salvo prórroga individual auditada; y la auditoría es de solo inserción incluso para el superusuario de la base de datos. La cola de trabajos vive en PostgreSQL con \cod{FOR UPDATE SKIP LOCKED}. El endurecimiento abarca contenedores sin privilegios y de solo lectura, límites de CPU, memoria y procesos por \textit{cgroups}, un host con firewall de doble capa y administración por AWS Systems Manager sin ningún puerto de gestión expuesto. Siete baterías de pruebas reproducibles pasan en local y en la nube. La prueba de carga muestra que, con un límite de 0,5~CPU, duplicar la concurrencia del worker solo mejora el rendimiento un 2\,\% en AWS: el cuello de botella es la cuota de CPU del planificador, no el paralelismo. El costo de la nube se mantiene por debajo de 5~USD.
+\end{abstract}
+
+\begin{IEEEkeywords}
+contenedores, Docker, \textit{cgroups}, control de acceso, auditoría, PostgreSQL, AWS, \textit{hardening}.
+\end{IEEEkeywords}
+
+% =====================================================================
+\section{Introducción}
+
+La Corporación Educativa Altiplano (CEA) es una institución ficticia de educación técnica con tres programas. Sus estudiantes entregan informes, código y datos en archivos de texto, y sus docentes necesitan recibirlos con hora certificada, obtener un análisis automático y tener garantías de integridad. El caso parte de tres incidentes previos: un estudiante descargó la entrega de un compañero cambiando el identificador en la URL (\textit{Insecure Direct Object Reference}, la familia de fallos que encabeza el OWASP Top~10 de 2021~\cite{owasp-a01}); se aceptaron entregas fuera de plazo sin dejar rastro; y un archivo muy grande saturó el servidor.
+
+El objetivo del proyecto es construir una plataforma que resuelva esas tres situaciones y que, al mismo tiempo, haga visibles los conceptos del curso de Sistemas Operativos: procesos y usuarios de Linux, aislamiento con espacios de nombres y \textit{cgroups}, planificación de CPU, persistencia, procesamiento concurrente y endurecimiento del sistema~\cite{silberschatz,tanenbaum}. Las contribuciones son:
+\begin{itemize}
+\item Un modelo de tres roles con separación de funciones: el Administrador TI gestiona la plataforma, pero no puede leer el contenido de las entregas.
+\item La regla RN-1 de cierre con prórroga individual auditada, verificada en el servidor.
+\item Una cola de trabajos transaccional sobre PostgreSQL, con reintentos y recuperación ante caídas.
+\item Un endurecimiento por capas (contenedor, host, red y base de datos) con evidencias automatizadas.
+\item Una evaluación local frente a AWS que interpreta el efecto de los límites de \textit{cgroups} y de los créditos de CPU.
+\end{itemize}
+
+El resto del documento describe el caso (Sección~\ref{sec:caso}), la arquitectura (Sección~\ref{sec:arq}), las decisiones de diseño (Sección~\ref{sec:decisiones}), la seguridad (Sección~\ref{sec:seg}), la operación (Sección~\ref{sec:ops}), la evaluación (Sección~\ref{sec:eval}), los costos (Sección~\ref{sec:costos}) y las limitaciones (Sección~\ref{sec:lim}).
+
+% =====================================================================
+\section{Caso de estudio y requisitos}\label{sec:caso}
+
+\subsection{Roles y matriz de permisos}
+Hay tres roles: \textbf{Administrador TI}, \textbf{Docente} (operador de sus propios cursos) y \textbf{Estudiante}. La Tabla~\ref{tab:matriz} resume la matriz. Cada permiso del docente y del estudiante tiene un \emph{alcance}: el docente actúa solo sobre los cursos que dicta y el estudiante solo sobre sus entregas y sobre los cursos en los que está matriculado.
+
+\begin{table}[!t]
+\caption{Matriz de permisos (\checkmark\ permitido, $\times$ denegado)}\label{tab:matriz}
+\centering\footnotesize
+\begin{tabular}{@{}>{\raggedright\arraybackslash}p{3.7cm}ccc@{}}
+\toprule
+Acción & Admin & Docente & Estudiante\\
+\midrule
+Crear usuarios, cursos y matrículas & \checkmark & $\times$ & $\times$\\
+Crear actividad con fecha límite & $\times$ & \checkmark$^a$ & $\times$\\
+Subir, reemplazar o eliminar entrega & $\times$ & $\times$ & \checkmark$^b$\\
+Descargar entrega y ver su resultado & $\times^c$ & \checkmark$^a$ & \checkmark$^d$\\
+Ver la marca \cod{posible\_duplicado} & $\times$ & \checkmark$^a$ & $\times$\\
+Otorgar prórroga & $\times$ & \checkmark$^a$ & $\times$\\
+Reprocesar trabajo fallido & \checkmark & \checkmark$^a$ & $\times$\\
+Ver trazabilidad de una entrega & \checkmark & \checkmark$^a$ & $\times$\\
+Ver auditoría completa y estado & \checkmark & $\times$ & $\times$\\
+\bottomrule
+\multicolumn{4}{@{}p{8.2cm}@{}}{\scriptsize $^a$Solo en sus cursos. $^b$Solo con matrícula y dentro del plazo (RN-1). $^c$Solo metadatos. $^d$Solo las propias.}
+\end{tabular}
+\end{table}
+
+\subsection{Regla de negocio RN-1: cierre con prórroga auditada}
+Un estudiante solo puede subir, reemplazar o eliminar una entrega si (a)~está matriculado en el curso de la actividad y (b)~la fecha límite no ha pasado. Pasado el cierre, el servidor responde HTTP~403 y registra el intento como \cod{DENEGADO}. La única excepción es una prórroga individual que otorga el docente del curso a un estudiante concreto; la prórroga queda auditada con quién la dio, a quién y hasta cuándo. La fecha efectiva se calcula en SQL como \cod{GREATEST(fecha\_limite, nueva\_fecha\_limite)}, que ignora el valor nulo cuando no hay prórroga. La verificación se hace \emph{antes} de aceptar el cuerpo de la petición, así que un estudiante fuera de plazo no llega a escribir nada en disco.
+
+\subsection{Regla complementaria y auditoría}
+Si dos estudiantes distintos entregan archivos con el mismo SHA-256 en la misma actividad, la entrega se marca como \cod{posible\_duplicado}; solo el docente ve esa marca. La auditoría tiene tres elementos propios: una tabla \cod{audit\_log} de solo inserción, un reporte de trazabilidad por entrega (subida, encolado, procesamiento, descargas, intentos denegados y prórrogas, con usuario, IP y fecha) y un reporte de accesos denegados agrupados por usuario, que sirve para detectar a quien prueba identificadores ajenos.
+
+% =====================================================================
+\section{Arquitectura}\label{sec:arq}
+
+La Fig.~\ref{fig:arq} muestra el despliegue y la Tabla~\ref{tab:servicios}, los servicios. Todo corre en una sola instancia EC2 \cod{t3.small} (2~vCPU, 2~GiB) con Ubuntu Server 24.04 en \cod{us-east-1}. El único puerto publicado es el 80 del proxy, que redirige al 8080 de Nginx. La API está conectada a dos redes de Docker: \cod{edge}, para que el proxy la alcance, e \cod{internal}, para hablar con la base de datos. El worker y la base de datos solo están en \cod{internal}, una red declarada con \cod{internal: true} y por tanto sin salida a Internet.
+
+\begin{figure*}[!t]
+\centering
+\resizebox{\textwidth}{!}{%
+\begin{tikzpicture}[
+  font=\footnotesize,
+  node distance=0.9cm,
+  caja/.style={draw=tinta!75, fill=white, rounded corners=2pt, align=center, inner sep=3pt, text width=2.75cm, minimum height=1.5cm},
+  ext/.style={caja, fill=black!4, text width=1.9cm},
+  vol/.style={draw=tinta!60, fill=black!7, cylinder, shape border rotate=90, aspect=0.22, align=center, text width=1.45cm, minimum height=0.95cm, inner sep=1pt},
+  fl/.style={-{Stealth[length=2mm]}, thick, tinta!80},
+  et/.style={font=\scriptsize, text=tinta, fill=white, inner sep=1pt},
+]
+\node[ext] (usr) {Usuarios\\(navegador)};
+\node[ext, right=1.15cm of usr] (sg) {Security Group\\solo TCP 80};
+\node[caja, right=1.25cm of sg] (proxy) {\textbf{proxy}\\Nginx sin privilegios\\uid 101\\0,25 CPU · 64 MB};
+\node[caja, right=1.35cm of proxy] (api) {\textbf{api}\\Node.js / Express 5\\uid 1000\\0,5 CPU · 256 MB};
+\node[caja, right=2.2cm of api] (db) {\textbf{db}\\PostgreSQL 16\\usuario postgres\\0,5 CPU · 384 MB};
+\node[vol, right=0.75cm of db] (pg) {volumen\\\texttt{pgdata}};
+\node[caja, below=1.15cm of db] (worker) {\textbf{worker}\\Node.js\\uid 1000\\0,5 CPU · 256 MB};
+\node[vol, below=1.1cm of api] (files) {volumen\\\texttt{files}};
+\node[ext, above=0.95cm of db, text width=3.1cm] (ssm) {AWS Systems Manager\\(administración sin SSH)};
+\begin{scope}[on background layer]
+  \node[draw=tinta!55, dashed, rounded corners=5pt, fill=serieA!5, inner xsep=9pt, inner ysep=15pt,
+        fit=(proxy) (api) (db) (pg) (worker) (files)] (ec2) {};
+\end{scope}
+\node[anchor=north west, font=\scriptsize\bfseries, text=tinta] at (ec2.north west) {EC2 t3.small · Ubuntu 24.04 · Docker · ufw · IMDSv2};
+\node[anchor=south west, font=\scriptsize, text=tinta, align=left] at (ec2.south west) {red \texttt{edge}: proxy, api\\red \texttt{internal} (sin Internet): api, worker, db};
+\draw[fl] (usr) -- node[et, above=1pt]{HTTP} (sg);
+\draw[fl] (sg) -- node[et, above=1pt]{:80$\to$8080} (proxy);
+\draw[fl] (proxy) -- node[et, above=1pt]{\texttt{/api/*}} (api);
+\draw[fl] (api) -- node[et, above=1pt, align=center]{SQL \texttt{app\_api}\\INSERT + NOTIFY} (db);
+\draw[fl] (worker) -- node[et, right=2pt, align=left]{LISTEN · SKIP LOCKED\\SQL \texttt{app\_worker}} (db);
+\draw[thick, tinta!60] (db) -- (pg);
+\draw[thick, tinta!60] (api) -- (files);
+\draw[thick, tinta!60] (files) -- (worker);
+\draw[fl, dashed] (ec2.north -| ssm.south) ++(0,0) -- node[et, right=2pt]{agente: HTTPS saliente} (ssm.south);
+\end{tikzpicture}}
+\caption{Arquitectura de despliegue. Solo el proxy publica un puerto; la base de datos y el worker no tienen salida a Internet; la administración se hace con AWS Systems Manager, sin abrir el puerto 22.}
+\label{fig:arq}
+\end{figure*}
+
+\begin{table}[!t]
+\caption{Servicios del sistema y límites de recursos}\label{tab:servicios}
+\centering\footnotesize
+\begin{tabular}{@{}l >{\raggedright\arraybackslash}p{3.3cm} l@{}}
+\toprule
+Servicio & Función & Límites\\
+\midrule
+\cod{proxy} & Frontend estático, proxy inverso, tope de 5~MiB, cabeceras de seguridad & 0,25 CPU · 64 MB\\
+\cod{api} & Autenticación, autorización, subidas, consultas y auditoría & 0,5 CPU · 256 MB\\
+\cod{worker} & Reclama trabajos, analiza y guarda resultados & 0,5 CPU · 256 MB\\
+\cod{db} & Usuarios, cursos, entregas, cola y auditoría & 0,5 CPU · 384 MB\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+El flujo de una entrega es el siguiente. Nginx rechaza con 413 cualquier cuerpo de más de 5~MiB. La API aplica el control de roles, la matrícula y el plazo de RN-1 y, solo entonces, acepta el archivo con \cod{multer}. Lo guarda como \cod{/data/originales/<usuario>/<uuid>.<ext>} e inserta en una misma transacción la entrega, el trabajo y un \cod{pg\_notify}, que PostgreSQL entrega al confirmar~\cite{pg-notify}. El worker, que escucha con \cod{LISTEN}, reclama el trabajo, valida que el contenido sea UTF-8, calcula el análisis, escribe el resultado en JSON y actualiza la huella y el estado en una transacción. Los estados posibles son \cod{pendiente}, \cod{en\_ejecucion}, \cod{completado} y \cod{fallido}, y están restringidos con un \cod{CHECK}.
+
+\subsection{Modelo de datos}
+La Tabla~\ref{tab:modelo} resume las ocho tablas. Las reglas se imponen en la propia base de datos y no solo en la aplicación: claves foráneas, restricciones \cod{CHECK} sobre roles, estados, resultados y tamaño máximo, y unicidad del nombre de usuario, del código de curso y de la ruta física de cada archivo. Los índices cubren las tres consultas críticas: el reclamo de la cola \cod{jobs(estado, disponible\_en, creado\_en)}, la detección de duplicados \cod{submissions(assignment\_id, sha256)} y la auditoría por usuario \cod{audit\_log(user\_id, ts)}.
+
+\begin{table}[!t]
+\caption{Modelo de datos}\label{tab:modelo}
+\centering\footnotesize
+\begin{tabular}{@{}l >{\raggedright\arraybackslash}p{5.3cm}@{}}
+\toprule
+Tabla & Contenido y restricciones principales\\
+\midrule
+\cod{users} & Usuario único, hash Argon2id, rol con \cod{CHECK}, activo\\
+\cod{courses} & Código único y docente (clave foránea)\\
+\cod{enrollments} & Matrícula; clave primaria (curso, estudiante)\\
+\cod{assignments} & Actividad con fecha límite; título único por curso\\
+\cod{extensions} & Prórroga individual: nueva fecha y quién la otorgó\\
+\cod{submissions} & Nombre original (solo para mostrar), ruta UUID única, tamaño $\leq$ 5~MiB, SHA-256\\
+\cod{jobs} & Cola: estado con \cod{CHECK}, intentos, \cod{disponible\_en} para la espera exponencial\\
+\cod{audit\_log} & Usuario, rol, acción, recurso, resultado, IP y detalle JSONB; solo inserción\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+% =====================================================================
+\section{Decisiones de diseño y criterio crítico}\label{sec:decisiones}
+
+\subsection{D1: la cola de trabajos es una tabla de PostgreSQL}
+El worker reclama trabajos de forma atómica:
+\begin{lstlisting}[language=SQL]
+UPDATE jobs SET estado='en_ejecucion', iniciado_en=now(),
+       intentos=intentos+1
+WHERE id = (SELECT id FROM jobs
+            WHERE estado='pendiente'
+              AND disponible_en<=now()
+            ORDER BY creado_en
+            FOR UPDATE SKIP LOCKED LIMIT 1)
+RETURNING *;
+\end{lstlisting}
+\cod{SKIP LOCKED} hace que cada transacción concurrente salte las filas ya bloqueadas por otra~\cite{pg-select}, así que dos hilos o dos réplicas del worker nunca toman el mismo trabajo. \emph{A favor:} el estado del trabajo y la cola son la misma fila, de modo que no puede darse que un sistema diga ``procesado'' y otro ``pendiente''; las transacciones ACID vienen incluidas; y hay un contenedor menos en una máquina de 2~GiB. \emph{En contra:} no escala a miles de trabajos por segundo y la consulta periódica genera carga. Se mitiga con \cod{LISTEN/NOTIFY} para despertar al worker al instante y una consulta de respaldo cada 3~s. La alternativa descartada, Redis con BullMQ, es superior a gran escala, pero añade un servicio y un segundo lugar donde vive el estado.
+
+\subsection{D2: almacenamiento en un volumen de Docker sobre EBS}
+Los archivos viven en el volumen \cod{files}. El nombre que pone el estudiante nunca se usa como ruta: se guarda solo en la base de datos, y el archivo recibe un UUID generado por el servidor. Así se evita el \textit{path traversal}; además, la API y el worker verifican que toda ruta resuelta quede dentro de \cod{/data}. S3 sería más durable, pero añade credenciales y latencia, y el uso de IAM está restringido en AWS Academy; queda como trabajo futuro.
+
+\subsection{D3: autorización en dos capas y en el servidor}
+La primera capa es RBAC: \cod{permissions.js} es la única fuente de verdad, y el \textit{middleware} \cod{authorize()} responde 403 si el rol no tiene la acción. La segunda capa es el alcance: \cod{scope.js} comprueba que la entrega es del estudiante o que el docente dicta el curso. Ante un recurso ajeno la respuesta es \textbf{404 y no 403}, la misma que si el identificador no existiera, para no permitir enumeración; el intento sí se registra como \cod{DENEGADO}. Los identificadores son UUID, pero esa no es la defensa (sería seguridad por oscuridad): la defensa es la comprobación de propiedad, justo la que faltaba en el incidente de la URL~\cite{owasp-a01}.
+
+\subsection{D4: contraseñas y sesión}
+Las contraseñas se guardan con Argon2id~\cite{rfc9106}, con los parámetros mínimos que recomienda OWASP (19~MiB de memoria, dos iteraciones y paralelismo uno)~\cite{owasp-pw}. No se usan valores más altos a propósito: con el límite de 256~MB de la API, varios inicios de sesión simultáneos con 64~MiB cada uno podrían provocar que el kernel matara el proceso por falta de memoria. La sesión es un JWT~\cite{rfc7519} de una hora en una cookie \cod{HttpOnly} y \cod{SameSite=Strict}. El usuario se vuelve a leer de la base de datos en cada petición, así que una desactivación o un cambio de rol se aplican al instante. El inicio de sesión admite cinco intentos fallidos por minuto e IP, y si el usuario no existe se verifica contra un hash falso para que el tiempo de respuesta no lo delate.
+
+\subsection{D5: roles de base de datos con mínimo privilegio}
+La aplicación nunca usa el superusuario. \cod{app\_api} tiene CRUD sobre las tablas de negocio y solo \cod{INSERT} y \cod{SELECT} sobre \cod{audit\_log}. \cod{app\_worker} solo puede actualizar \cod{jobs} y, de \cod{submissions}, \emph{una única columna} (\cod{sha256}), mediante un permiso a nivel de columna; sobre la auditoría solo puede insertar. Un \textit{trigger} rechaza \cod{UPDATE}, \cod{DELETE} y \cod{TRUNCATE} sobre \cod{audit\_log} incluso al superusuario. Para saltárselo habría que desactivar el trigger, y la base arranca con \cod{log\_statement=ddl}, así que esa acción queda en el log.
+
+\subsection{D6: procesamiento reproducible y validación en tres capas}
+Solo se aceptan archivos \cod{.txt}, \cod{.md}, \cod{.csv} y \cod{.json} de hasta 5~MiB. La validación tiene tres capas: el tamaño en Nginx, la extensión y el MIME declarado en la API (415 si no es válido) y el contenido en el worker, que exige UTF-8 válido y sin bytes nulos; si no se cumple, el trabajo termina \cod{fallido} con el motivo. El resultado incluye el SHA-256, las líneas, las palabras, los caracteres, las diez palabras más frecuentes, las filas y columnas en el caso de CSV, la validez en el de JSON y el tiempo de procesamiento. Los errores transitorios se reintentan hasta tres veces con espera exponencial (5, 10 y 20~s); los permanentes, como un binario disfrazado, fallan sin reintentar.
+
+\subsection{D7: administración sin SSH}
+El proveedor de Internet del equipo usa CGNAT: cada conexión sale por una IP distinta de tres rangos compartidos con otros clientes. Una regla ``SSH solo desde mi IP'' fallaba a ratos, y abrir esos rangos exponía el puerto 22 a desconocidos. Por eso el puerto 22 se cerró en el Security Group y la instancia se administra con AWS Systems Manager~\cite{aws-ssm}. Su agente sale hacia la API de AWS por HTTPS, de modo que no queda ningún puerto de gestión expuesto, y funciona desde cualquier red. El demonio \cod{sshd} se mantiene endurecido como vía de emergencia.
+
+% =====================================================================
+\section{Seguridad y endurecimiento}\label{sec:seg}
+
+La Tabla~\ref{tab:hardening} resume las medidas y cómo se verifican. El script \cod{verificar\_hardening.sh} reúne 14 comprobaciones automáticas, que pasan en local y en AWS.
+
+\begin{table}[!t]
+\caption{Medidas de endurecimiento y su evidencia}\label{tab:hardening}
+\centering\footnotesize
+\begin{tabular}{@{}>{\raggedright\arraybackslash}p{2.9cm}>{\raggedright\arraybackslash}p{5.1cm}@{}}
+\toprule
+Medida & Evidencia verificada\\
+\midrule
+\multicolumn{2}{@{}l}{\textit{Contenedores}}\\
+Procesos sin root & \cod{id}: api y worker uid 1000, proxy uid 101\\
+Sistema de archivos de solo lectura & \cod{touch} en el código: \textit{Read-only file system}\\
+Sin \textit{capabilities} & \cod{CapDrop=[ALL]}; la BD conserva solo 5 para iniciar\\
+Sin escalada de privilegios & \cod{no-new-privileges:true}\\
+Límites por \textit{cgroups} & CPU, memoria y 100 procesos (anti \textit{fork bomb})\\
+Imágenes multietapa & \cod{npm ci -{}-omit=dev}; código propiedad de root\\
+\midrule
+\multicolumn{2}{@{}l}{\textit{Host EC2}}\\
+Usuario de servicio & \cod{entregas} sin \cod{sudo} y fuera del grupo \cod{docker}\\
+SSH & Sin contraseñas, sin root, solo \cod{ubuntu}, 3 intentos\\
+Firewall doble & Security Group (solo 80) + \cod{ufw} con denegación por defecto\\
+Parches & \cod{unattended-upgrades} activo\\
+Servicios & \cod{multipathd}, \cod{ModemManager}, \cod{udisks2} apagados\\
+Docker & Rotación de logs, \cod{no-new-privileges} y \cod{live-restore}\\
+Metadatos & IMDSv2 obligatorio (token de sesión)\\
+\midrule
+\multicolumn{2}{@{}l}{\textit{Red, datos y secretos}}\\
+Exposición & Desde Internet: 80 abierto; 22, 3000 y 5432 cerrados\\
+Aislamiento de red & El worker no resuelve ni alcanza Internet\\
+Auditoría inmutable & \cod{app\_api}: \textit{permission denied}; superusuario: bloqueado por el \textit{trigger}\\
+Secretos & \cod{.env} con permisos 600; ningún valor real en el historial de git\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Tres decisiones merecen una justificación aparte. Primero, pertenecer al grupo \cod{docker} equivale a tener root en el host~\cite{docker-sec}: por eso el usuario de servicio no está en él, el despliegue lo ejecuta el administrador con privilegios y los \emph{procesos} de la aplicación corren sin privilegios dentro de los contenedores. Segundo, Docker escribe sus propias reglas de \textit{iptables} para los puertos publicados y estas se evalúan antes que las de \cod{ufw}~\cite{docker-fw}: un puerto publicado queda abierto aunque \cod{ufw} lo niegue. Por eso el Security Group es la capa principal y el \cod{docker-compose.yml} publica un único puerto. Tercero, cada servicio recibe solo sus propios secretos: el worker no conoce el secreto JWT ni las contraseñas de los usuarios, y la contraseña de su rol de base de datos es distinta de la de la API. Esto sigue las recomendaciones de la guía NIST SP~800-190 para contenedores~\cite{nist190}.
+
+% =====================================================================
+\section{Monitoreo y operación}\label{sec:ops}
+
+El endpoint \cod{/api/admin/estado}, exclusivo del administrador, reporta los trabajos por estado, el tiempo medio y máximo de procesamiento, el último error, la antigüedad del trabajo pendiente más viejo (más de 60~s indica que el worker probablemente está caído), el espacio libre del volumen de datos y la memoria de la API. Todos los servicios tienen \textit{healthcheck}; el del worker comprueba un archivo de latido que el proceso solo escribe si alcanza la base de datos. Los logs se emiten en JSON por la salida estándar y Docker los rota (10~MB y 3 archivos por servicio), sin pagar CloudWatch Logs. Con \cod{restart: unless-stopped} y Docker habilitado en \textit{systemd}, la aplicación volvió a responder 38~s después de un \textit{stop} y \textit{start} de la instancia, sin intervención. El respaldo se hace con \cod{pg\_dump} más un \cod{tar} del volumen de archivos.
+
+% =====================================================================
+\section{Evaluación}\label{sec:eval}
+
+\subsection{Entornos y conjunto de datos}
+Las pruebas se ejecutaron en dos entornos el 21 de noviembre de 2026: un PC local de 4 núcleos con Docker~29, y la EC2 \cod{t3.small} con Docker~29.1. El conjunto de datos es sintético y reproducible: un generador con semilla fija produce siempre los mismos bytes y, por tanto, los mismos SHA-256 (Tabla~\ref{tab:dataset}). No contiene datos personales reales.
+
+\begin{table}[!t]
+\caption{Conjunto de datos sintético}\label{tab:dataset}
+\centering\footnotesize
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{@{}l r l@{}}
+\toprule
+Archivo & Tamaño & Resultado esperado\\
+\midrule
+\cod{informe\_laboratorio.md} & 6,1 KiB & completado\\
+\cod{informe\_copia.md} & 6,1 KiB & completado; duplicado\\
+\cod{notas\_parcial\_sintetico.csv} & 40 KiB & 800 filas, 8 columnas\\
+\cod{algoritmo\_ordenamiento.txt} & 1,8 KiB & completado\\
+\cod{metadatos\_entrega.json} & 0,4 KiB & JSON válido\\
+\cod{ensayo\_largo.txt} & 4,6 MiB & completado ($\approx$0,9 s)\\
+\cod{ensayo\_excedido.txt} & 5,7 MiB & 413 en Nginx\\
+\cod{binario\_disfrazado.txt} & 50 KiB & 201 y luego \cod{fallido}\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Pruebas funcionales y de seguridad}
+Cada prueba es un script reproducible que guarda su salida como evidencia (Tabla~\ref{tab:pruebas}). La prueba de aislamiento comprueba que un estudiante recibe 404 al pedir, modificar o borrar la entrega de otro; que un docente de otro curso recibe 404; que el administrador recibe 403 al pedir el contenido aunque vea los metadatos; y que los nueve intentos quedan en la auditoría como \cod{DENEGADO}. La de RN-1 crea una actividad que cierra en 30~s y comprueba la secuencia 201, cierre, 403, prórroga y 201; un segundo estudiante sin prórroga sigue recibiendo 403.
+
+\begin{table}[!t]
+\caption{Resultados de las pruebas (comprobaciones correctas / total)}\label{tab:pruebas}
+\centering\footnotesize
+\begin{tabular}{@{}l c c@{}}
+\toprule
+Prueba & Local & AWS\\
+\midrule
+Funcional (3 roles, estados, 413/415, duplicados) & 37/37 & 37/37\\
+Aislamiento entre usuarios & 27/27 & 27/27\\
+Regla de negocio RN-1 & 6/6 & 6/6\\
+Recuperación del worker & 13/13 & 13/13\\
+Persistencia (\cod{down} + \cod{up}) & 4/4 & 4/4\\
+Endurecimiento & 14/14 & 14/14\\
+Carga: 50 trabajos, concurrencia 1 y 2 & 50/50 & 50/50\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Prueba de carga}
+Cinco estudiantes suben a la vez diez archivos cada uno, uno de ellos de 4,6~MiB, lo que da 50 trabajos. Los tiempos se calculan con las marcas \cod{creado\_en}, \cod{iniciado\_en} y \cod{terminado\_en} de la tabla \cod{jobs}, y el consumo del worker con \cod{docker stats} muestreado cada segundo. La prueba se repite con uno y con dos trabajos simultáneos en el worker (\cod{WORKER\_CONCURRENCY}). La Tabla~\ref{tab:carga} recoge las métricas y la Fig.~\ref{fig:carga} las compara.
+
+\begin{table}[!t]
+\caption{Prueba de carga: 50 trabajos (c = concurrencia del worker)}\label{tab:carga}
+\centering\footnotesize
+\setlength{\tabcolsep}{3.2pt}
+\begin{tabular}{@{}l rr rr@{}}
+\toprule
+& \multicolumn{2}{c}{Local} & \multicolumn{2}{c}{AWS t3.small}\\
+\cmidrule(lr){2-3}\cmidrule(l){4-5}
+Métrica & c=1 & c=2 & c=1 & c=2\\
+\midrule
+Tiempo total (s) & 6,77 & 5,66 & 6,30 & 6,17\\
+Rendimiento (trabajos/s) & 7,39 & 8,83 & 7,94 & 8,11\\
+Espera media en cola (ms) & 2522 & 2045 & 2082 & 1920\\
+Tiempo medio por trabajo (ms) & 121 & 128 & 110 & 152\\
+Trabajo de 4,6 MiB (máx., ms) & 1483 & 1871 & 1080 & 1977\\
+Pico de CPU del worker (\%) & 51,6 & 51,9 & 50,5 & 51,1\\
+Pico de RAM del worker (MiB) & 93 & 66 & 99 & 98\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{figure}[!t]
+\centering
+\begin{tikzpicture}
+\begin{groupplot}[
+  group style={group size=2 by 1, horizontal sep=1.25cm},
+  width=4.55cm, height=4.2cm,
+  ybar=1.5pt, /pgf/bar width=8pt,
+  symbolic x coords={Local,AWS}, xtick=data, enlarge x limits=0.5,
+  ymin=0, axis lines*=left,
+  ymajorgrids, grid style={draw=black!12},
+  tick label style={font=\scriptsize, text=tinta}, label style={font=\scriptsize, text=tinta},
+  title style={font=\scriptsize\bfseries, text=tinta, yshift=-2pt},
+  /pgf/number format/use comma, /pgf/number format/1000 sep={},
+  nodes near coords style={font=\scriptsize, text=tinta},
+  legend style={font=\scriptsize, draw=none, legend columns=2, /tikz/every even column/.append style={column sep=8pt}},
+]
+\nextgroupplot[title={(a) Rendimiento}, ylabel={trabajos/s}, ymax=11,
+  legend to name=leyendaCarga]
+\addplot[fill=serieA, draw=none] coordinates {(Local,7.39) (AWS,7.94)};
+\addplot[fill=serieB, draw=none, postaction={pattern={Lines[angle=45,distance=2.6pt,line width=0.55pt]}, pattern color=serieBosc},
+  nodes near coords, point meta=explicit symbolic] coordinates {(Local,8.83) [+19\,\%] (AWS,8.11) [+2\,\%]};
+\legend{concurrencia 1, concurrencia 2}
+\nextgroupplot[title={(b) Tiempo medio por trabajo}, ylabel={ms}, ymax=190]
+\addplot[fill=serieA, draw=none] coordinates {(Local,121) (AWS,110)};
+\addplot[fill=serieB, draw=none, postaction={pattern={Lines[angle=45,distance=2.6pt,line width=0.55pt]}, pattern color=serieBosc},
+  nodes near coords, point meta=explicit symbolic] coordinates {(Local,128) [+6\,\%] (AWS,152) [+38\,\%]};
+\end{groupplot}
+\node[anchor=south] at ([yshift=10pt]$(group c1r1.north)!0.5!(group c2r1.north)$) {\pgfplotslegendfromname{leyendaCarga}};
+\end{tikzpicture}
+\caption{Efecto de duplicar la concurrencia del worker con un límite de 0,5~CPU. Las etiquetas indican el cambio de concurrencia 1 a 2. En AWS el rendimiento casi no mejora (+2\,\%) y cada trabajo tarda un 38\,\% más.}
+\label{fig:carga}
+\end{figure}
+
+\textbf{Interpretación.} (1)~El pico de CPU del worker es del 50--52\,\% en los cuatro casos, justo el límite \cod{cpus: "0.50"}. El kernel lo aplica con el control de ancho de banda del planificador CFS: el grupo del contenedor recibe 50~ms de CPU por cada periodo de 100~ms y, agotada la cuota, se queda en espera hasta el siguiente periodo~\cite{kernel-bwc,compose-deploy}. El worker es \emph{CPU-bound}, porque el hash y el conteo de palabras son cómputo puro. (2)~Por eso duplicar la concurrencia mejora poco: +19\,\% en local y solo +2\,\% en AWS. Los dos trabajos se reparten la misma media CPU, así que cada uno tarda más (+38\,\% de media en AWS y +83\,\% el archivo grande). Lo poco que se gana viene de solapar esperas de E/S, como las consultas a la base de datos y la lectura del disco. En el PC local, con la memoria muy ocupada y uso de \textit{swap}, había más esperas que solapar; en la EC2 apenas las hay, y el resultado muestra el límite de CPU en estado puro. (3)~Para escalar hay que dar más CPU, no más hilos: subir el límite o lanzar réplicas del worker, algo seguro gracias a \cod{SKIP LOCKED}. (4)~La memoria sobra: el pico es de 99~MiB sobre 256 (39\,\%). (5)~La API no es el cuello de botella: acepta las 50 subidas en 1,1--1,5~s.
+
+\textbf{Créditos de CPU.} La \cod{t3.small} acumula 24 créditos por hora y, sin créditos, baja a una línea base del 20\,\% por vCPU~\cite{aws-burst}. A diferencia de las T2, las T3 en modo \textit{Standard} no reciben créditos de lanzamiento~\cite{aws-std}: tras instalar Docker y construir las imágenes, el saldo era de 0,5. Se esperó en reposo hasta tener 4,4 antes de medir. Con el saldo a cero, el límite observado habría sido la línea base de AWS y no la cuota de \textit{cgroups}, y la conclusión habría sido otra.
+
+\subsection{Recuperación ante fallos}
+Se probaron tres escenarios. Con el worker detenido, los trabajos esperan en \cod{pendiente} y se completan al volver. Ante un \cod{docker compose stop} a mitad de un trabajo, el worker recibe \cod{SIGTERM}, deja de reclamar, espera hasta 8~s y devuelve a la cola lo que no terminó. Ante una caída brusca con \cod{SIGKILL}, el trabajo queda en \cod{en\_ejecucion}; al reiniciar, el worker detecta que superó el umbral configurable (\cod{RECUPERAR\_TRAS\_SEG}) y lo devuelve a \cod{pendiente}, o lo marca \cod{fallido} si ya agotó sus intentos. En los tres casos ningún trabajo se perdió.
+
+\subsection{Correspondencia con los requisitos del enunciado}
+La Tabla~\ref{tab:checklist} relaciona cada punto del checklist de evaluación con la parte del sistema que lo cumple y con la evidencia que lo demuestra. Todas las evidencias se regeneran con los scripts del repositorio.
+
+\begin{table}[!t]
+\caption{Checklist de evaluación y dónde se demuestra}\label{tab:checklist}
+\centering\footnotesize
+\setlength{\tabcolsep}{3pt}
+\begin{tabular}{@{}r >{\raggedright\arraybackslash}p{1.95cm} >{\raggedright\arraybackslash}p{5.35cm}@{}}
+\toprule
+\# & Punto & Dónde se cumple y evidencia\\
+\midrule
+1 & Despliegue & EC2 \cod{t3.small}; \cod{/api/health} por la IP pública (Sec.~\ref{sec:ops})\\
+2 & Contenedores & Cuatro servicios con función propia (Tabla~\ref{tab:servicios})\\
+3 & Linux y procesos & uid sin privilegios, \textit{systemd}, \cod{docker top} (Tabla~\ref{tab:hardening})\\
+4 & Recursos & Límites por \textit{cgroups} e interpretación de la carga (Fig.~\ref{fig:carga})\\
+5 & Usuarios & Inicio de sesión de los tres roles; Argon2id (D4)\\
+6 & Autorización & RBAC con 403 y matriz única (Tabla~\ref{tab:matriz}, D3)\\
+7 & Aislamiento & 404 ante entregas ajenas; 27/27 comprobaciones (Tabla~\ref{tab:pruebas})\\
+8 & Procesamiento & Cola con \cod{SKIP LOCKED}, estados y reintentos (D1, D6)\\
+9 & Persistencia & Volúmenes \cod{pgdata} y \cod{files}; \cod{down} + \cod{up} sin pérdida\\
+10 & Endurecimiento & 14/14 comprobaciones en contenedores y host (Tabla~\ref{tab:hardening})\\
+11 & Red & Solo el 80 abierto; red \cod{internal} sin salida (Sec.~\ref{sec:seg})\\
+12 & Auditoría & \cod{audit\_log} inmutable, trazabilidad y denegados (D5)\\
+13 & Autenticidad & Regla RN-1 en vivo: 201, 403, prórroga, 201\\
+14 & Repositorio & Dockerfiles, Compose, \cod{.env.example}; ningún secreto en el historial de git\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+% =====================================================================
+\section{Costos}\label{sec:costos}
+
+La estrategia fue desarrollar y depurar todo en local con Docker Compose, sin costo, y usar AWS solo para desplegar, probar y sustentar. Se aplicaron estas reglas:
+\begin{itemize}
+\item Una sola instancia, detenida a mano al terminar cada sesión.
+\item Créditos en modo \textit{Standard}, sin cobro por exceso de CPU.
+\item Ningún servicio administrado (RDS, balanceador, NAT, ECR o CloudWatch Logs).
+\item Las imágenes se construyen en la propia instancia.
+\item Disco gp3 de 16~GB.
+\item Elastic IP solo los días previos a la sustentación.
+\end{itemize}
+Con los precios de lista de \cod{us-east-1} (0,0208~USD/h la instancia, 0,005~USD/h la IPv4 y 0,08~USD por GB-mes el disco), la primera sesión en la nube costó unos 0,02~USD. El disco cuesta unos 0,04~USD al día aunque la instancia esté apagada. El total proyectado hasta la sustentación es de 3 a 5~USD, frente a unos 49~USD disponibles.
+
+% =====================================================================
+\section{Limitaciones y trabajo futuro}\label{sec:lim}
+
+\begin{itemize}
+\item \textbf{Sin TLS.} El servicio se publica por HTTP y la cookie no lleva la marca \cod{Secure}. Con un dominio, el siguiente paso es HTTPS con certificados de Let's Encrypt en Nginx.
+\item \textbf{Docker con root.} El demonio de Docker se ejecuta como root; Docker \textit{rootless} reduciría el impacto de un escape de contenedor.
+\item \textbf{Un único punto de fallo.} Hay una sola instancia y los respaldos se guardan en ella; deberían copiarse fuera (por ejemplo, a S3) y probarse su restauración.
+\item \textbf{Escala de la cola.} Basta para decenas de trabajos por segundo; para volúmenes mayores convendría un \textit{broker} dedicado.
+\item \textbf{MIME declarado por el cliente.} No es confiable; la verificación real del contenido se hace en el worker.
+\item \textbf{Dependencia de Systems Manager.} Si el agente fallara, habría que abrir temporalmente el puerto 22 en el Security Group.
+\end{itemize}
+
+% =====================================================================
+\section{Conclusiones}
+
+EntregaSegura resuelve los tres incidentes del caso. El acceso a recursos ajenos se bloquea con la comprobación de propiedad y queda auditado; las entregas fuera de plazo se rechazan con RN-1 y toda excepción deja rastro; y los archivos grandes o maliciosos se detienen en tres capas sin afectar al servicio. El proyecto muestra conceptos de sistemas operativos con evidencias medibles: procesos sin privilegios, aislamiento de red y de sistema de archivos, límites por \textit{cgroups} cuyo efecto se observa en la prueba de carga, concurrencia segura mediante bloqueo de filas y recuperación ante señales y caídas. Medir en la nube aportó un hallazgo que la prueba local no mostraba: en una instancia de rendimiento variable, el resultado depende tanto de la cuota de CPU del contenedor como del saldo de créditos de la instancia, y hay que controlar ambos para interpretar los números correctamente.
+
+% =====================================================================
+\begin{thebibliography}{99}
+\bibitem{silberschatz} A. Silberschatz, P. B. Galvin y G. Gagne, \textit{Operating System Concepts}, 10.\textsuperscript{a} ed. Hoboken, NJ, EE.~UU.: Wiley, 2018.
+\bibitem{tanenbaum} A. S. Tanenbaum y H. Bos, \textit{Modern Operating Systems}, 4.\textsuperscript{a} ed. Boston, MA, EE.~UU.: Pearson, 2015.
+\bibitem{owasp-a01} OWASP Foundation, ``A01:2021 -- Broken Access Control,'' \textit{OWASP Top 10}, 2021. [En línea]. Disponible: \url{https://owasp.org/Top10/A01_2021-Broken_Access_Control/}
+\bibitem{pg-select} The PostgreSQL Global Development Group, ``SELECT: The Locking Clause,'' \textit{PostgreSQL 16 Documentation}. [En línea]. Disponible: \url{https://www.postgresql.org/docs/16/sql-select.html}
+\bibitem{pg-notify} The PostgreSQL Global Development Group, ``NOTIFY,'' \textit{PostgreSQL 16 Documentation}. [En línea]. Disponible: \url{https://www.postgresql.org/docs/16/sql-notify.html}
+\bibitem{rfc9106} A. Biryukov, D. Dinu, D. Khovratovich y S. Josefsson, ``Argon2 Memory-Hard Function for Password Hashing and Proof-of-Work Applications,'' RFC 9106, IETF, sep. 2021.
+\bibitem{owasp-pw} OWASP Foundation, ``Password Storage Cheat Sheet,'' \textit{OWASP Cheat Sheet Series}. [En línea]. Disponible: \url{https://cheatsheetseries.owasp.org/cheatsheets/Password_Storage_Cheat_Sheet.html}
+\bibitem{rfc7519} M. Jones, J. Bradley y N. Sakimura, ``JSON Web Token (JWT),'' RFC 7519, IETF, may. 2015.
+\bibitem{aws-ssm} Amazon Web Services, ``AWS Systems Manager Session Manager,'' \textit{AWS Systems Manager User Guide}. [En línea]. Disponible: \url{https://docs.aws.amazon.com/systems-manager/latest/userguide/session-manager.html}
+\bibitem{docker-sec} Docker Inc., ``Docker Engine security,'' \textit{Docker Docs}. [En línea]. Disponible: \url{https://docs.docker.com/engine/security/}
+\bibitem{docker-fw} Docker Inc., ``Packet filtering and firewalls,'' \textit{Docker Docs}. [En línea]. Disponible: \url{https://docs.docker.com/engine/network/packet-filtering-firewalls/}
+\bibitem{nist190} M. Souppaya, J. Morello y K. Scarfone, ``Application Container Security Guide,'' NIST, Gaithersburg, MD, EE.~UU., SP 800-190, sep. 2017.
+\bibitem{kernel-bwc} The Linux Kernel Documentation, ``CFS Bandwidth Control.'' [En línea]. Disponible: \url{https://docs.kernel.org/scheduler/sched-bwc.html}
+\bibitem{compose-deploy} Docker Inc., ``Compose Deploy Specification,'' \textit{Docker Docs}. [En línea]. Disponible: \url{https://docs.docker.com/reference/compose-file/deploy/}
+\bibitem{aws-burst} Amazon Web Services, ``Burstable performance instances,'' \textit{Amazon EC2 User Guide}. [En línea]. Disponible: \url{https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/burstable-performance-instances.html}
+\bibitem{aws-std} Amazon Web Services, ``Key concepts for burstable instances in standard mode,'' \textit{Amazon EC2 User Guide}. [En línea]. Disponible: \url{https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/burstable-performance-instances-standard-mode-concepts.html}
+\end{thebibliography}
+
+\end{document}
