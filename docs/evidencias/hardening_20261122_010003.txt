@@ -1,0 +1,93 @@
+== hardening · 2026-11-22 01:00:03 UTC · ip-172-31-47-157 · http://localhost:80 ==
+
+---- 1. Servicios y puertos publicados (solo el proxy debe tener uno) ----
+NAME                     STATUS                        PORTS
+entregasegura-api-1      Up About a minute (healthy)   3000/tcp
+entregasegura-db-1       Up About a minute (healthy)   5432/tcp
+entregasegura-proxy-1    Up About a minute (healthy)   0.0.0.0:80->8080/tcp, [::]:80->8080/tcp
+entregasegura-worker-1   Up About a minute (healthy)   
+  [OK]    un único contenedor publica puertos
+
+---- 2. Usuario de los procesos (uid ≠ 0) ----
+          api: uid=1000(node) gid=1000(node) groups=1000(node)
+  [OK]    api no corre como root
+          worker: uid=1000(node) gid=1000(node) groups=1000(node)
+  [OK]    worker no corre como root
+          proxy: uid=101(nginx) gid=101(nginx) groups=101(nginx)
+  [OK]    proxy no corre como root
+          db: el proceso postgres baja de root al usuario postgres:
+            USER     PID   COMMAND
+            postgres     1 postgres
+            postgres    26 postgres
+            postgres    27 postgres
+
+---- 3. Configuración de seguridad de cada contenedor ----
+          entregasegura-api-1 RO=true CapDrop=[ALL] CapAdd=<no value> NoNewPriv=[no-new-privileges:true] Mem=268435456 CPU=500000000 Pids=100 Restart=unless-stopped
+          entregasegura-db-1 RO=false CapDrop=[ALL] CapAdd=[CAP_CHOWN CAP_DAC_OVERRIDE CAP_FOWNER CAP_SETGID CAP_SETUID] NoNewPriv=[no-new-privileges:true] Mem=402653184 CPU=500000000 Pids=100 Restart=unless-stopped
+          entregasegura-proxy-1 RO=true CapDrop=[ALL] CapAdd=<no value> NoNewPriv=[no-new-privileges:true] Mem=67108864 CPU=250000000 Pids=100 Restart=unless-stopped
+          entregasegura-worker-1 RO=true CapDrop=[ALL] CapAdd=<no value> NoNewPriv=[no-new-privileges:true] Mem=268435456 CPU=500000000 Pids=100 Restart=unless-stopped
+  [OK]    api: sistema de archivos de solo lectura
+  [OK]    worker: sistema de archivos de solo lectura
+  [OK]    proxy: sistema de archivos de solo lectura
+
+---- 4. El sistema de archivos de solo lectura funciona de verdad ----
+          api> touch /app/src/malicioso.js  ->  touch: /app/src/malicioso.js: Read-only file system
+  [OK]    la API no puede modificar su propio código
+
+---- 5. Aislamiento de red ----
+          worker> wget http://example.com  ->  wget: bad address 'example.com'
+salida=1
+  [OK]    el worker no tiene salida a Internet (red internal)
+  [OK]    PostgreSQL (5432) no es accesible desde el host
+          red entregasegura_internal: internal=true
+
+---- 6. Auditoría inmutable (append-only) ----
+          app_api> DELETE FROM audit_log  ->  ERROR:  permission denied for table audit_log
+  [OK]    la aplicación (app_api) no puede borrar la auditoría
+          postgres> UPDATE audit_log ...  ->  ERROR:  audit_log es de solo inserción: UPDATE no permitido
+  [OK]    ni el superusuario puede modificarla sin quitar el trigger
+          Permisos sobre audit_log:
+            app_api: INSERT, SELECT
+            app_worker: INSERT
+
+---- 7. Secretos ----
+          -rw------- 1 entregas entregas 1305 Nov 22 00:54 /opt/entregasegura/.env
+  [OK]    .env con permisos 600
+  [OK]    .env está excluido de git (.gitignore)
+
+---- 8. Recursos (dato para interpretar) ----
+NAME                     CPU %     MEM USAGE / LIMIT   MEM %     PIDS
+entregasegura-api-1      0.00%     45.32MiB / 256MiB   17.70%    11
+entregasegura-db-1       0.10%     54.1MiB / 384MiB    14.09%    9
+entregasegura-proxy-1    0.00%     10.7MiB / 64MiB     16.72%    3
+entregasegura-worker-1   0.00%     58.75MiB / 256MiB   22.95%    11
+                         total        used        free      shared  buff/cache   available
+          Mem:           1.9Gi       521Mi       916Mi        18Mi       641Mi       1.4Gi
+          Swap:             0B          0B          0B
+          Filesystem      Size  Used Avail Use% Mounted on
+          /dev/root        15G  3.5G   12G  24% /
+
+---- 9. Host: puertos TCP en escucha y firewall ----
+          State  Recv-Q Send-Q Local Address:Port  Peer Address:PortProcess                                   
+          LISTEN 0      4096       127.0.0.1:35087      0.0.0.0:*    users:(("containerd",pid=643,fd=14))     
+          LISTEN 0      4096      127.0.0.54:53         0.0.0.0:*    users:(("systemd-resolve",pid=326,fd=17))
+          LISTEN 0      4096   127.0.0.53%lo:53         0.0.0.0:*    users:(("systemd-resolve",pid=326,fd=15))
+          LISTEN 0      4096         0.0.0.0:22         0.0.0.0:*    users:(("systemd",pid=1,fd=85))          
+          LISTEN 0      4096         0.0.0.0:80         0.0.0.0:*    users:(("docker-proxy",pid=1437,fd=7))   
+          LISTEN 0      4096            [::]:22            [::]:*    users:(("systemd",pid=1,fd=86))          
+          LISTEN 0      4096            [::]:80            [::]:*    users:(("docker-proxy",pid=1443,fd=7))   
+          Status: active
+          Logging: on (low)
+          Default: deny (incoming), allow (outgoing), deny (routed)
+          New profiles: skip
+          
+          To                         Action      From
+          --                         ------      ----
+          22/tcp                     ALLOW IN    Anywhere                   # SSH emergencia (cerrado en el SG)
+          80/tcp                     ALLOW IN    Anywhere                   # EntregaSegura HTTP
+          22/tcp (v6)                ALLOW IN    Anywhere (v6)              # SSH emergencia (cerrado en el SG)
+          80/tcp (v6)                ALLOW IN    Anywhere (v6)              # EntregaSegura HTTP
+          
+
+== RESUMEN: 14 correctas, 0 fallidas ==
+Evidencia guardada en: /opt/entregasegura/docs/evidencias/hardening_20261122_010003.txt

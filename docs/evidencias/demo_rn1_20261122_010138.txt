@@ -1,0 +1,40 @@
+== demo_rn1 · 2026-11-22 01:01:38 UTC · ip-172-31-47-157 · http://localhost:80 ==
+
+---- 1. El docente crea una actividad que cierra en 30 s ----
+  [OK]    crear actividad (cierra 2026-11-22T01:02:08Z)                  HTTP 201
+
+---- 2. est_carla sube dentro del plazo ----
+  [OK]    subida dentro del plazo                                        HTTP 201
+
+---- 3. Esperando el cierre… ----
+          faltan  31 s           faltan  30 s           faltan  29 s           faltan  28 s           faltan  27 s           faltan  26 s           faltan  25 s           faltan  24 s           faltan  23 s           faltan  22 s           faltan  21 s           faltan  20 s           faltan  19 s           faltan  18 s           faltan  17 s           faltan  16 s           faltan  15 s           faltan  14 s           faltan  13 s           faltan  12 s           faltan  11 s           faltan  10 s           faltan   9 s           faltan   8 s           faltan   7 s           faltan   6 s           faltan   5 s           faltan   4 s           faltan   3 s           faltan   2 s           faltan   1 s 
+
+---- 4. est_carla intenta subir después del cierre ----
+  [OK]    subida fuera de plazo                                          HTTP 403
+          respuesta: La actividad está cerrada: la fecha límite ya pasó (RN-1). Pide una prórroga a tu docente.
+
+---- 5. El docente otorga una prórroga individual a est_carla (+10 min) ----
+  [OK]    otorgar prórroga hasta 2026-11-22T01:12:10Z                   HTTP 201
+
+---- 6. est_carla vuelve a subir ----
+  [OK]    subida con prórroga                                           HTTP 201
+
+---- 7. La prórroga es individual: est_bruno sigue bloqueado ----
+  [OK]    est_bruno sin prórroga                                        HTTP 403
+
+---- 8. Auditoría de la actividad (lo que ve el Admin TI) ----
+          01:01:38  doc_ramirez  actividad:crear    PERMITIDO 
+          01:02:10  est_carla    entrega:subir      DENEGADO  fuera_de_plazo
+          01:02:10  doc_ramirez  prorroga:otorgar   PERMITIDO a est_carla hasta 2026-11-22T01:12:10.000Z
+          01:02:10  est_bruno    entrega:subir      DENEGADO  fuera_de_plazo
+
+---- Trazabilidad de la entrega final de est_carla (lo que ve el docente) ----
+          01:02:10  est_carla    entrega:subir      DENEGADO  fuera_de_plazo
+          01:02:10  doc_ramirez  prorroga:otorgar   PERMITIDO 
+          01:02:10  est_carla    entrega:subir      PERMITIDO 
+          01:02:10  est_carla    trabajo:encolado   PERMITIDO 
+          01:02:10  worker       trabajo:iniciado   PERMITIDO 
+          01:02:10  worker       trabajo:completado PERMITIDO 
+
+== RESUMEN: 6 correctas, 0 fallidas ==
+Evidencia guardada en: /opt/entregasegura/docs/evidencias/demo_rn1_20261122_010138.txt

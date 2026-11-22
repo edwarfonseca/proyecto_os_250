@@ -1,0 +1,38 @@
+== recuperacion · 2026-11-22 01:00:44 UTC · ip-172-31-47-157 · http://localhost:80 ==
+
+---- A. Worker detenido: los trabajos esperan y se procesan al volver ----
+ Container entregasegura-worker-1  Stopped
+  [OK]    subir informe_laboratorio.md con el worker apagado             HTTP 201
+  [OK]    subir algoritmo_ordenamiento.txt con el worker apagado         HTTP 201
+  [OK]    subir metadatos_entrega.json con el worker apagado             HTTP 201
+  [OK]    entrega fa782b2a… sigue en 'pendiente'
+  [OK]    entrega aeb88a0a… sigue en 'pendiente'
+  [OK]    entrega ad21d8aa… sigue en 'pendiente'
+ Container entregasegura-worker-1  Started
+  [OK]    entrega fa782b2a… 'completado' al volver el worker
+  [OK]    entrega aeb88a0a… 'completado' al volver el worker
+  [OK]    entrega ad21d8aa… 'completado' al volver el worker
+
+---- B. Apagado ordenado a mitad de un trabajo (cada trabajo tarda 20 s a propósito) ----
+  [OK]    subir entrega                                                  HTTP 201
+          estado antes de parar: en_ejecucion
+ Container entregasegura-worker-1  Stopped
+  [OK]    tras 'docker compose stop' el trabajo volvió a 'pendiente'
+          worker-1  | {"level":30,"time":1795309255640,"svc":"worker","senal":"SIGTERM","en_curso":1,"msg":"apagando worker"}
+          worker-1  | {"level":40,"time":1795309263660,"svc":"worker","devueltos":1,"msg":"trabajos sin terminar devueltos a la cola"}
+
+---- C. Caída brusca (kill -9) a mitad de un trabajo ----
+          estado antes del kill: en_ejecucion
+ Container entregasegura-worker-1  Killed
+  [OK]    tras el kill -9 el trabajo quedó colgado en 'en_ejecucion'
+          reiniciando el worker (sin demora; umbral de recuperación 10 s)…
+          estado: en_ejecucion
+          estado: completado
+  [OK]    el trabajo colgado se recuperó y terminó 'completado'
+          worker-1  | {"level":40,"time":1795309282806,"svc":"worker","job_id":"0fe27f4a-cb1c-4d84-847d-eb376f3b8a9d","estado":"pendiente","msg":"trabajo colgad
+
+---- Restaurando el worker con la configuración del .env ----
+ Container entregasegura-worker-1  Started
+
+== RESUMEN: 13 correctas, 0 fallidas ==
+Evidencia guardada en: /opt/entregasegura/docs/evidencias/recuperacion_20261122_010044.txt

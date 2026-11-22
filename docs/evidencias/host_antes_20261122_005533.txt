@@ -1,0 +1,79 @@
+== antes · Sun Nov 22 00:55:33 UTC 2026 ==
+--- apt list --upgradable
+0
+--- ss -tulpn (puertos en escucha)
+Netid State  Recv-Q Send-Q      Local Address:Port  Peer Address:PortProcess                                   
+udp   UNCONN 0      0               127.0.0.1:323        0.0.0.0:*    users:(("chronyd",pid=782,fd=5))         
+udp   UNCONN 0      0              127.0.0.54:53         0.0.0.0:*    users:(("systemd-resolve",pid=340,fd=16))
+udp   UNCONN 0      0           127.0.0.53%lo:53         0.0.0.0:*    users:(("systemd-resolve",pid=340,fd=14))
+udp   UNCONN 0      0      172.31.47.157%ens5:68         0.0.0.0:*    users:(("systemd-network",pid=528,fd=21))
+udp   UNCONN 0      0                   [::1]:323           [::]:*    users:(("chronyd",pid=782,fd=6))         
+tcp   LISTEN 0      4096        127.0.0.53%lo:53         0.0.0.0:*    users:(("systemd-resolve",pid=340,fd=15))
+tcp   LISTEN 0      4096            127.0.0.1:33465      0.0.0.0:*    users:(("containerd",pid=1640,fd=15))    
+tcp   LISTEN 0      4096              0.0.0.0:22         0.0.0.0:*    users:(("systemd",pid=1,fd=99))          
+tcp   LISTEN 0      4096           127.0.0.54:53         0.0.0.0:*    users:(("systemd-resolve",pid=340,fd=17))
+tcp   LISTEN 0      4096                 [::]:22            [::]:*    users:(("systemd",pid=1,fd=100))         
+--- ufw status
+Status: inactive
+--- servicios habilitados
+UNIT FILE                                      STATE   PRESET
+apparmor.service                               enabled enabled
+apport.service                                 enabled enabled
+blk-availability.service                       enabled enabled
+chrony.service                                 enabled enabled
+cloud-config.service                           enabled enabled
+cloud-final.service                            enabled enabled
+cloud-init-local.service                       enabled enabled
+cloud-init.service                             enabled enabled
+console-setup.service                          enabled enabled
+containerd.service                             enabled enabled
+cron.service                                   enabled enabled
+dmesg.service                                  enabled enabled
+docker.service                                 enabled enabled
+e2scrub_reap.service                           enabled enabled
+ec2-instance-connect-harvest-hostkeys.service  enabled enabled
+finalrd.service                                enabled enabled
+getty@.service                                 enabled enabled
+grub-common.service                            enabled enabled
+grub-initrd-fallback.service                   enabled enabled
+hibinit-agent.service                          enabled enabled
+irqbalance.service                             enabled enabled
+keyboard-setup.service                         enabled enabled
+lvm2-monitor.service                           enabled enabled
+ModemManager.service                           enabled enabled
+multipathd.service                             enabled enabled
+networkd-dispatcher.service                    enabled enabled
+open-iscsi.service                             enabled enabled
+open-vm-tools.service                          enabled enabled
+pollinate.service                              enabled enabled
+rsyslog.service                                enabled enabled
+secureboot-db.service                          enabled enabled
+setvtrgb.service                               enabled enabled
+snap.amazon-ssm-agent.amazon-ssm-agent.service enabled enabled
+snapd.apparmor.service                         enabled enabled
+snapd.autoimport.service                       enabled enabled
+snapd.core-fixup.service                       enabled enabled
+snapd.recovery-chooser-trigger.service         enabled enabled
+snapd.seeded.service                           enabled enabled
+snapd.service                                  enabled enabled
+snapd.system-shutdown.service                  enabled enabled
+sysstat.service                                enabled enabled
+systemd-networkd-wait-online.service           enabled enabled
+systemd-networkd.service                       enabled enabled
+systemd-pstore.service                         enabled enabled
+systemd-resolved.service                       enabled enabled
+ua-reboot-cmds.service                         enabled enabled
+ubuntu-advantage.service                       enabled enabled
+ubuntu-fan.service                             enabled enabled
+udisks2.service                                enabled enabled
+ufw.service                                    enabled enabled
+unattended-upgrades.service                    enabled enabled
+vgauth.service                                 enabled enabled
+
+52 unit files listed.
+--- sshd efectivo
+maxauthtries 6
+permitrootlogin without-password
+pubkeyauthentication yes
+passwordauthentication no
+x11forwarding yes

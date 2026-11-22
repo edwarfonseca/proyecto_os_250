@@ -10,7 +10,7 @@ retraso): esta bitácora es la alerta temprana. Se llena **en cada sesión** en 
 
 | Fecha | Saldo inicial (panel) | Hora inicio | Hora fin | Horas EC2 | Qué se hizo | Estado al salir (¿EC2 stopped? ¿EIP?) |
 |-------|-----------------------|-------------|----------|-----------|-------------|-------------------------------------|
-| 2026-11-21 | _(pendiente: anotar)_ | 19:30 | — | 0 | Fases 1–6 en local. Fase 0.2: auditoría de la cuenta (`docs/evidencias/aws_auditoria_inicial_*.txt`): ningún recurso activo con costo; solo infraestructura del propio lab y un stack de ECS vacío (clúster INACTIVE) de un lab anterior. | Sin recursos creados |
+| 2026-11-21 | _(pendiente: anotar)_ | 19:30 | 20:15 | 0,4 | Fase 0.2: auditoría de la cuenta (`docs/evidencias/aws_auditoria_inicial_*.txt`): nada activo con costo (solo infraestructura del lab y un stack de ECS vacío de un lab anterior). **Fase 7:** Security Group `entregasegura-sg` (solo 80), EC2 `t3.small` `i-0d2655639177f1265` con disco gp3 16 GB, hardening del host, despliegue, prueba Stop/Start. **Fase 8:** las 7 pruebas en AWS (todas OK). Costo estimado de la sesión: ≈ 0,02 USD. | EC2 **stopped** · disco de 16 GB existe (≈ 0,04 USD/día) · sin EIP |
 
 ## Precios de referencia (us-east-1)
 

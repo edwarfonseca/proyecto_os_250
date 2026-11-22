@@ -17,8 +17,9 @@ while IFS= read -r f; do
   [[ "$f" =~ ^[A-Za-z0-9._-]+$ ]] || { echo "Nombre raro, se omite: $f"; continue; }
   if [[ -e "$DESTINO/$f" ]]; then continue; fi
   # Viaja en base64 para que los bytes lleguen exactos (tildes, emojis...).
-  ./infra/ssm_ejecutar.sh "base64 -w0 /opt/entregasegura/docs/evidencias/$f" 120 \
-    | head -1 | base64 -d > "$DESTINO/$f"
+  # La primera línea de la salida es el archivo; lo demás es el estado del comando.
+  SALIDA="$(./infra/ssm_ejecutar.sh "base64 -w0 /opt/entregasegura/docs/evidencias/$f" 120)"
+  printf '%s' "${SALIDA%%$'\n'*}" | base64 -d > "$DESTINO/$f"
   echo "  traída: $f ($(wc -c < "$DESTINO/$f") bytes)"
   N=$((N + 1))
 done <<< "$LISTA"
