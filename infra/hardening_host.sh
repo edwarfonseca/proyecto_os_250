@@ -22,6 +22,9 @@ ABRIR_443="${ABRIR_443:-no}"
 EVID="$APP_DIR/docs/evidencias"
 mkdir -p "$EVID"
 FECHA="$(date +%Y%m%d_%H%M%S)"
+# En Ubuntu 24.04 SSH arranca por socket: /run/sshd no existe hasta la primera
+# conexión y sin ella "sshd -t" / "sshd -T" fallan. La creamos como haría el servicio.
+install -d -m 0755 /run/sshd
 
 evidencia() { # evidencia <etiqueta>
   {
@@ -30,7 +33,7 @@ evidencia() { # evidencia <etiqueta>
     echo "--- ss -tulpn (puertos en escucha)";    ss -tulpn
     echo "--- ufw status";                        ufw status verbose || true
     echo "--- servicios habilitados";             systemctl list-unit-files --type=service --state=enabled --no-pager
-    echo "--- sshd efectivo";                     sshd -T 2>/dev/null | grep -Ei '^(passwordauthentication|permitrootlogin|allowusers|maxauthtries|x11forwarding|pubkeyauthentication) '
+    echo "--- sshd efectivo";                     sshd -T 2>&1 | grep -Ei '^(passwordauthentication|permitrootlogin|allowusers|maxauthtries|x11forwarding|pubkeyauthentication) ' || true
   } > "$EVID/host_${1}_${FECHA}.txt" 2>&1
   echo "  evidencia: $EVID/host_${1}_${FECHA}.txt"
 }
@@ -66,8 +69,10 @@ MaxAuthTries 3
 X11Forwarding no
 EOF
 if sshd -t; then
-  systemctl reload ssh 2>/dev/null || systemctl restart ssh
-  echo "  sshd recargado (configuración validada con sshd -t)"
+  # Con activación por socket, si ssh.service no está corriendo leerá la
+  # configuración nueva en la próxima conexión; si está corriendo, se recarga.
+  if systemctl is-active --quiet ssh; then systemctl reload ssh; fi
+  echo "  configuración de sshd validada con sshd -t y aplicada"
 else
   echo "  ERROR en la configuración de sshd: se revierte para no perder el acceso"
   rm -f /etc/ssh/sshd_config.d/01-entregasegura.conf
@@ -77,7 +82,10 @@ echo "[3] Firewall ufw: denegar todo lo entrante salvo 22 y 80"
 apt-get install -y -qq ufw >/dev/null
 ufw default deny incoming
 ufw default allow outgoing
-ufw allow 22/tcp comment 'SSH administracion'
+# El 22 lo cierra el Security Group (la administración es por Systems Manager).
+# ufw lo deja pasar solo como acceso de EMERGENCIA: si SSM fallara, basta con
+# abrirlo temporalmente en el Security Group desde la consola.
+ufw allow 22/tcp comment 'SSH emergencia (cerrado en el SG)'
 ufw allow 80/tcp comment 'EntregaSegura HTTP'
 [[ "$ABRIR_443" == "si" ]] && ufw allow 443/tcp comment 'EntregaSegura HTTPS'
 ufw --force enable
@@ -101,7 +109,8 @@ for s in multipathd.service multipathd.socket ModemManager.service udisks2.servi
   fi
 done
 if [[ "${DESACTIVAR_SNAPD:-no}" == "si" ]]; then
-  # Ojo: en algunas AMI el agente SSM viene como snap; solo si no lo usas.
+  # ¡NO en EntregaSegura! En Ubuntu el agente de Systems Manager (amazon-ssm-agent)
+  # es un snap: sin snapd se pierde el único acceso de administración.
   systemctl disable --now snapd.service snapd.socket snapd.seeded.service >/dev/null 2>&1 && echo "  desactivado: snapd"
 fi
 
@@ -122,5 +131,5 @@ systemctl enable docker >/dev/null
 echo "[7] Evidencia DESPUÉS"
 evidencia despues
 echo
-echo "Hardening terminado. Antes de cerrar esta sesión, abre OTRA terminal y"
-echo "comprueba que puedes entrar por SSH:  ssh -i labsuser.pem $ADMIN_USER@<IP>"
+echo "Hardening terminado. Comprueba que el acceso de administración sigue funcionando"
+echo "(Systems Manager: infra/ssm_ejecutar.sh 'id', o Session Manager en la consola)."
