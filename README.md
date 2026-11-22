@@ -106,7 +106,8 @@ docker stats --no-stream                  # CPU y RAM de cada contenedor
 ## Despliegue en AWS
 
 Paso a paso en [docs/DESPLIEGUE_AWS.md](docs/DESPLIEGUE_AWS.md). En resumen: una sola EC2
-`t3.small` con Ubuntu 24.04, `sudo bash infra/hardening_host.sh` y `sudo ./scripts/deploy.sh`.
+`t3.small` con Ubuntu 24.04, **solo el puerto 80 abierto** y administración por AWS Systems Manager
+(sin SSH): `infra/ssm_ejecutar.sh 'bash infra/hardening_host.sh'` y `infra/ssm_ejecutar.sh './scripts/deploy.sh'`.
 
 ## Estructura
 

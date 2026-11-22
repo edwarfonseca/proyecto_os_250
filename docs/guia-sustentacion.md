@@ -1,7 +1,8 @@
 # Guía de sustentación y retos
 
-Todo lo de esta guía funciona igual en local y en la EC2. En la EC2 hay que anteponer `sudo` a
-`docker` y a los scripts, y trabajar en `/opt/entregasegura`.
+Todo lo de esta guía funciona igual en local y en la EC2. En la EC2 no hay SSH: se entra por la
+consola de AWS → EC2 → la instancia → **Connect → Session Manager → Connect**, y luego
+`sudo -i` y `cd /opt/entregasegura` (como root no hace falta anteponer `sudo`).
 
 ## Atajos para la terminal
 
@@ -37,7 +38,7 @@ docker compose exec db psql -U postgres -d entregasegura
 | 8 | Procesamiento | Subir un archivo y ver `pendiente → en_ejecucion → completado` | UI + `docker compose logs -f worker` |
 | 9 | Persistencia | Reiniciar BD y worker; los datos siguen | `docker compose restart db worker` · `./scripts/prueba_persistencia.sh` |
 | 10 | Hardening | Sin root, solo lectura, sin capabilities, `.env` 600 | `./scripts/verificar_hardening.sh` · `ls -l .env` |
-| 11 | Red | Solo 22 y 80 abiertos y por qué; BD y worker en red `internal` sin salida | Security Group · `sudo ss -tulpn` · `sudo ufw status` |
+| 11 | Red | **Solo el 80 abierto** en el Security Group; el 22 cerrado porque se administra con Session Manager; BD y worker en red `internal` sin salida | Security Group · `ss -tulpn` · `ufw status` · `./scripts/verificar_hardening.sh` (sección 5) |
 | 12 | Auditoría | Usuario, acción, recurso, resultado, IP y fecha | Pestaña *Auditoría* del admin, o `SELECT ts, username, accion, resultado, ip FROM audit_log ORDER BY ts DESC LIMIT 10;` |
 | 13 | Autenticidad | RN-1 en vivo: cierre, 403, prórroga, 201 | `./scripts/demo_rn1.sh` o botón «Crear (cierra en 1 minuto)» en la UI |
 | 14 | Repositorio | Dockerfiles, compose, `.env.example`, ningún secreto versionado (revisa **todo el historial**, no solo los archivos actuales) | GitHub · `./scripts/buscar_secretos.sh` |
@@ -59,6 +60,13 @@ docker compose exec db psql -U postgres -d entregasegura
   `node` (uid 1000) dentro de contenedores sin capabilities. Rootless Docker queda como mejora futura.
 - **¿Puede la aplicación borrar su rastro?** No. `app_api` solo tiene `INSERT` y `SELECT` en
   `audit_log`, y un trigger bloquea `UPDATE`/`DELETE` incluso al superusuario (`verificar_hardening.sh`, sección 6).
+- **¿Cómo administran el servidor si el 22 está cerrado?** Con AWS Systems Manager: el agente de la
+  instancia sale hacia la API de AWS por HTTPS, así que no hay ningún puerto de administración
+  abierto a Internet. Además funciona desde cualquier red (el ISP del equipo cambia de IP en cada
+  conexión, y una regla "solo mi IP" fallaba). `sshd` sigue endurecido como acceso de emergencia.
+- **¿Qué es IMDSv2 y por qué lo activaron?** El servicio de metadatos de la EC2 entrega credenciales
+  temporales. Con IMDSv2 obligatorio hace falta un token previo, así que una vulnerabilidad SSRF en
+  la app no basta para robarlas.
 - **¿ufw protege los puertos de Docker?** No: Docker escribe sus propias reglas de iptables y las
   salta. Por eso el Security Group es la capa principal y el compose publica un solo puerto.
 
