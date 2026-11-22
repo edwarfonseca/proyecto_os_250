@@ -21,7 +21,7 @@ fi
 
 echo "2. Valores reales del .env dentro del historial:"
 if [[ -r .env ]]; then
-  VALORES="$(grep -E '^[A-Z_]*(PASSWORD|SECRET)=' .env | cut -d= -f2- | sed 's/[[:space:]]*#.*$//' | grep -E '.{8,}')"
+  VALORES="$(grep -E '^[A-Z_]*(PASSWORD|SECRET|TOKEN)=' .env | cut -d= -f2- | sed 's/[[:space:]]*#.*$//' | grep -E '.{8,}')"
   if [[ -n "$VALORES" ]] && "${G[@]}" log --all -p | grep -qF -f <(printf '%s\n' "$VALORES"); then
     echo "   ¡ALERTA! Algún valor del .env está en un commit. Cambia esas contraseñas."; FALLOS=$((FALLOS + 1))
   else

@@ -111,6 +111,10 @@ Paso a paso en [docs/DESPLIEGUE_AWS.md](docs/DESPLIEGUE_AWS.md). En resumen: una
 `t3.small` con Ubuntu 24.04, **solo el puerto 80 abierto** y administración por AWS Systems Manager
 (sin SSH): `infra/ssm_ejecutar.sh 'bash infra/hardening_host.sh'` y `infra/ssm_ejecutar.sh './scripts/deploy.sh'`.
 
+Dirección en la nube: **http://entregasegura-uptc.duckdns.org** (solo con la instancia encendida). Es un subdominio gratuito
+de DuckDNS que sigue a la IP pública en cada arranque, en vez de una Elastic IP de pago
+([infra/configurar_duckdns.sh](infra/configurar_duckdns.sh)).
+
 ## Estructura
 
 ```

@@ -9,7 +9,7 @@ consola de AWS → EC2 → la instancia → **Connect → Session Manager → Co
 ```bash
 cd /opt/entregasegura            # en la EC2 (en local: la carpeta del repo)
 source <(grep -E '^(ADMIN|DEMO)_PASSWORD=' .env)   # carga las contraseñas en la sesión (EC2: sudo -s antes)
-B=http://localhost               # o http://<IP-publica> desde tu PC
+B=http://localhost               # o http://entregasegura-uptc.duckdns.org desde tu PC
 
 # Iniciar sesión como alguien (guarda la cookie en /tmp/<usuario>.jar)
 entrar() { curl -s -c /tmp/$1.jar -H 'Content-Type: application/json' \
@@ -28,7 +28,7 @@ docker compose exec db psql -U postgres -d entregasegura
 
 | # | Punto | Qué mostrar y decir | Comando |
 |---|---|---|---|
-| 1 | Despliegue | La app en la IP pública; en la consola EC2: región `us-east-1`, tipo `t3.small` | `curl http://<IP>/api/health` |
+| 1 | Despliegue | La app en `http://entregasegura-uptc.duckdns.org` (DuckDNS sigue a la IP pública en cada arranque); en la consola EC2: región `us-east-1`, tipo `t3.small` | `curl http://entregasegura-uptc.duckdns.org/api/health` |
 | 2 | Contenedores | 4 servicios y el papel de cada uno | `docker compose ps` |
 | 3 | Linux y procesos | SO, servicio Docker, procesos dentro del worker (corren como `node`, no root) | `cat /etc/os-release` · `systemctl status docker` · `docker top entregasegura-worker-1` |
 | 4 | Recursos | **Interpretar un dato**: «el worker usa X MB de 256 MB; en la prueba de carga tocó el techo de 50 % de CPU, que es su límite de 0.5 CPU» | `docker stats --no-stream` · `free -h` · `df -h` |

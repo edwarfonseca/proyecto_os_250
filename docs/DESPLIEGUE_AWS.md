@@ -76,9 +76,34 @@ Contraseñas de la app en el servidor: `infra/ssm_ejecutar.sh "grep -E '^(ADMIN|
 
 Para actualizar tras un `git push`: `infra/ssm_ejecutar.sh './scripts/deploy.sh' 1800`.
 
+### Nombre fijo: `http://entregasegura-uptc.duckdns.org` (en vez de Elastic IP)
+
+La IP pública cambia en cada Stop/Start. En lugar de pagar una Elastic IP se usa un subdominio
+gratuito de [DuckDNS](https://www.duckdns.org): en cada arranque la EC2 le avisa de su IP nueva y el
+nombre la sigue (TTL de 60 s: responde ~1 min después de encenderla).
+
+1. En duckdns.org (entrar con Google o GitHub): escribir el subdominio → **add domain**.
+2. En la EC2, por **Session Manager** (sección 3), con el token de DuckDNS a mano:
+   ```bash
+   sudo bash /opt/entregasegura/infra/configurar_duckdns.sh entregasegura-uptc
+   ```
+   El script pide el token sin mostrarlo. **No** se pasa por `infra/ssm_ejecutar.sh`: los comandos
+   de Run Command quedan guardados en el historial de la consola de AWS.
+3. Desde el PC: `curl http://entregasegura-uptc.duckdns.org/api/health`.
+
+Cómo funciona: [infra/configurar_duckdns.sh](../infra/configurar_duckdns.sh) guarda `DUCKDNS_DOMAIN` y
+`DUCKDNS_TOKEN` en el `.env` (600, nunca en git) e instala el servicio systemd `entregasegura-duckdns`.
+En cada arranque, ese servicio ejecuta [infra/duckdns.sh](../infra/duckdns.sh), que lee la IP de los
+metadatos de la instancia (IMDSv2) y se la envía a DuckDNS. Corre como el usuario `entregas`, sin
+capabilities y con el sistema de archivos en solo lectura. Ver cómo fue la última actualización:
+`infra/ssm_ejecutar.sh 'journalctl -u entregasegura-duckdns -n 5 --no-pager -o cat'`.
+
+Ojo: con la instancia apagada, el nombre sigue apuntando a la última IP, que AWS puede asignar a
+otra persona. Usar el nombre solo con la instancia encendida.
+
 ## 5. Comprobar que sobrevive al apagado (crítico)
 
-Stop + Start y, con la **nueva IP**, `curl http://<nueva-IP>/api/health`. Debe responder sin hacer nada:
+Stop + Start y, con la **nueva IP** (o con el nombre), `curl http://entregasegura-uptc.duckdns.org/api/health`. Debe responder sin hacer nada:
 Docker arranca con el sistema y los contenedores tienen `restart: unless-stopped`.
 (Resultado del 21 nov 2026: de vuelta en línea 38 s después del apagado.)
 
@@ -97,11 +122,13 @@ o `aws cloudwatch get-metric-statistics ... CPUCreditBalance`).
 
 ## 7. Antes y después de la sustentación (Fase 11)
 
-- **2–3 días antes:** EC2 → *Elastic IPs* → *Allocate* → *Associate* a la instancia. Esa IP no
-  cambia entre apagados. Cobra aunque la instancia esté parada, así que no antes.
-- **El día D, 30 min antes:** Start Lab → Start EC2 → `docker compose ps` → `curl /api/health` →
+- **Ya no hace falta Elastic IP:** la dirección para el docente y la demo es `http://entregasegura-uptc.duckdns.org`
+  (sección 4). Solo si el docente exigiera una IP fija: EC2 → *Elastic IPs* → *Allocate* →
+  *Associate*, 2–3 días antes y no antes, porque cobra aunque la instancia esté parada.
+- **El día D, 30 min antes:** Start Lab → Start EC2 → `docker compose ps` →
+  `curl http://entregasegura-uptc.duckdns.org/api/health` →
   sesiones abiertas de los 3 roles y una pestaña con Session Manager.
 - **Después de la nota, en este orden:** `infra/ssm_ejecutar.sh './scripts/backup_db.sh'` y traer
-  `backups/` y `docs/evidencias/` → **Terminate** la instancia → **Release** la Elastic IP → borrar el
-  snapshot y el Security Group → `scripts/auditoria_aws.sh` para confirmar que no queda nada → anotar
+  `backups/` y `docs/evidencias/` → **Terminate** la instancia → **Release** la Elastic IP (si se usó) →
+  borrar el subdominio en duckdns.org → borrar el snapshot y el Security Group → `scripts/auditoria_aws.sh` para confirmar que no queda nada → anotar
   el saldo final.

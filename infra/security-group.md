@@ -33,7 +33,7 @@ la IP del momento, se repara y se vuelve a quitar.
 ## Reglas de salida
 
 Las de por defecto (todo permitido): la instancia necesita salir a Internet para `apt`, Docker Hub,
-`git pull` y para hablar con Systems Manager. Los contenedores `worker` y `db` **no** tienen salida
+`git pull`, para hablar con Systems Manager y para avisar a DuckDNS de su IP en cada arranque. Los contenedores `worker` y `db` **no** tienen salida
 porque están en una red Docker con `internal: true`.
 
 ## Por qué hace falta el Security Group aunque haya ufw
