@@ -1,0 +1,14 @@
+{
+  "name": "entregasegura-worker",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Worker de EntregaSegura: toma trabajos de la cola y los procesa",
+  "main": "src/index.js",
+  "type": "commonjs",
+  "scripts": { "start": "node src/index.js" },
+  "engines": { "node": ">=22" },
+  "dependencies": {
+    "pg": "^8.16.3",
+    "pino": "^9.9.0"
+  }
+}

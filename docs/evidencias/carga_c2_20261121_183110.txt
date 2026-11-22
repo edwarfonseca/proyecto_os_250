@@ -1,0 +1,31 @@
+== carga_c2 · 2026-11-21 18:31:10 -05 · SO2026-EdwarFonseca · http://localhost:80 ==
+
+---- 1. Preparación (usuarios, curso y actividad de carga) ----
+  [OK]    actividad de carga creada                                      HTTP 201
+
+---- 2. Worker con WORKER_CONCURRENCY=2 ----
+ Container entregasegura-worker-1 Started 
+  [OK]    worker corriendo con WORKER_CONCURRENCY=2
+
+---- 3. Disparando 50 subidas (5 estudiantes en paralelo) ----
+          subidas aceptadas: 50/50 en 1.11s
+  [OK]    todas las subidas reciben 201
+
+---- 4. Esperando a que el worker vacíe la cola ----
+          terminados  25 · en cola  25           terminados  26 · en cola  24           terminados  26 · en cola  24           terminados  27 · en cola  23           terminados  27 · en cola  23           terminados  29 · en cola  21           terminados  29 · en cola  21           terminados  29 · en cola  21           terminados  29 · en cola  21           terminados  50 · en cola   0 
+
+---- 5. Resultados (calculados con los tiempos guardados en la BD) ----
+ trabajos | completados | fallidos | total_seg | ms_promedio | ms_p95 | ms_max | espera_cola_ms_promedio | trabajos_por_seg 
+----------+-------------+----------+-----------+-------------+--------+--------+-------------------------+------------------
+       50 |          50 |        0 |      5.66 |         128 |   1002 |   1871 |                    2045 |             8.83
+(1 row)
+
+          Worker · pico de CPU: 51.9 %  (límite 0.50 CPU = 50 %)
+          Worker · pico de RAM: 66.4 MiB de 256 MiB  (26 % del límite)
+          Muestras tomadas: 16
+
+---- 6. Restaurando la concurrencia del .env ----
+ Container entregasegura-worker-1 Started 
+
+== RESUMEN: 3 correctas, 0 fallidas ==
+Evidencia guardada en: /home/edwar/Desktop/OS/proyecto_final_250/entregasegura/docs/evidencias/carga_c2_20261121_183110.txt

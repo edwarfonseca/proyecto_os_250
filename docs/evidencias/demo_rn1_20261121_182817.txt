@@ -1,0 +1,40 @@
+== demo_rn1 · 2026-11-21 18:28:17 -05 · SO2026-EdwarFonseca · http://localhost:80 ==
+
+---- 1. El docente crea una actividad que cierra en 30 s ----
+  [OK]    crear actividad (cierra 2026-11-21T23:28:48Z)                  HTTP 201
+
+---- 2. est_carla sube dentro del plazo ----
+  [OK]    subida dentro del plazo                                        HTTP 201
+
+---- 3. Esperando el cierre… ----
+          faltan  31 s           faltan  30 s           faltan  29 s           faltan  28 s           faltan  27 s           faltan  26 s           faltan  25 s           faltan  24 s           faltan  23 s           faltan  22 s           faltan  21 s           faltan  20 s           faltan  19 s           faltan  18 s           faltan  17 s           faltan  16 s           faltan  15 s           faltan  14 s           faltan  13 s           faltan  12 s           faltan  11 s           faltan  10 s           faltan   9 s           faltan   8 s           faltan   7 s           faltan   6 s           faltan   5 s           faltan   4 s           faltan   3 s           faltan   2 s           faltan   1 s 
+
+---- 4. est_carla intenta subir después del cierre ----
+  [OK]    subida fuera de plazo                                          HTTP 403
+          respuesta: La actividad está cerrada: la fecha límite ya pasó (RN-1). Pide una prórroga a tu docente.
+
+---- 5. El docente otorga una prórroga individual a est_carla (+10 min) ----
+  [OK]    otorgar prórroga hasta 2026-11-21T23:38:50Z                   HTTP 201
+
+---- 6. est_carla vuelve a subir ----
+  [OK]    subida con prórroga                                           HTTP 201
+
+---- 7. La prórroga es individual: est_bruno sigue bloqueado ----
+  [OK]    est_bruno sin prórroga                                        HTTP 403
+
+---- 8. Auditoría de la actividad (lo que ve el Admin TI) ----
+          23:28:18  doc_ramirez  actividad:crear    PERMITIDO 
+          23:28:50  est_carla    entrega:subir      DENEGADO  fuera_de_plazo
+          23:28:50  doc_ramirez  prorroga:otorgar   PERMITIDO a est_carla hasta 2026-11-21T23:38:50.000Z
+          23:28:50  est_bruno    entrega:subir      DENEGADO  fuera_de_plazo
+
+---- Trazabilidad de la entrega final de est_carla (lo que ve el docente) ----
+          23:28:50  est_carla    entrega:subir      DENEGADO  fuera_de_plazo
+          23:28:50  doc_ramirez  prorroga:otorgar   PERMITIDO 
+          23:28:50  est_carla    entrega:subir      PERMITIDO 
+          23:28:50  est_carla    trabajo:encolado   PERMITIDO 
+          23:28:50  worker       trabajo:iniciado   PERMITIDO 
+          23:28:50  worker       trabajo:completado PERMITIDO 
+
+== RESUMEN: 6 correctas, 0 fallidas ==
+Evidencia guardada en: /home/edwar/Desktop/OS/proyecto_final_250/entregasegura/docs/evidencias/demo_rn1_20261121_182817.txt

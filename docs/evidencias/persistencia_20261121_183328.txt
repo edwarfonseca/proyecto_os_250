@@ -1,0 +1,28 @@
+== persistencia · 2026-11-21 18:33:28 -05 · SO2026-EdwarFonseca · http://localhost:80 ==
+
+---- Antes ----
+          entrega de referencia: 189ffd98-16b9-4629-8fbb-700580424c7c (sha256 7b78417dba590ec8…)
+          12 usuarios, 163 entregas, 162 completadas, 766 eventos de auditoría
+volumen: entregasegura_files
+volumen: entregasegura_pgdata
+
+---- docker compose down  (sin -v: se borran contenedores y redes, NO volúmenes) ----
+           Network entregasegura_edge Removing 
+           Network entregasegura_internal Removing 
+           Network entregasegura_internal Removed 
+           Network entregasegura_edge Removed 
+          no queda ningún contenedor
+
+---- docker compose up -d ----
+           Container entregasegura-proxy-1 Starting 
+           Container entregasegura-proxy-1 Started 
+
+---- Después ----
+          12 usuarios, 163 entregas, 162 completadas, 766 eventos de auditoría
+  [OK]    mismos usuarios, entregas, resultados y auditoría
+  [OK]    el usuario sigue pudiendo iniciar sesión                      HTTP 200
+  [OK]    el resultado anterior sigue disponible                         HTTP 200
+  [OK]    con el mismo SHA-256
+
+== RESUMEN: 4 correctas, 0 fallidas ==
+Evidencia guardada en: /home/edwar/Desktop/OS/proyecto_final_250/entregasegura/docs/evidencias/persistencia_20261121_183328.txt

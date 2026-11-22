@@ -1,0 +1,73 @@
+== funcional · 2026-11-21 18:28:05 -05 · SO2026-EdwarFonseca · http://localhost:80 ==
+
+---- 1. Salud del sistema ----
+  [OK]    GET /api/health                                                HTTP 200
+
+---- 2. Autenticación de los tres roles ----
+  [OK]    login admin (Administrador TI)                                 HTTP 200
+  [OK]    login doc_ramirez (Docente)                                    HTTP 200
+  [OK]    login est_ana (Estudiante)                                     HTTP 200
+  [OK]    login est_bruno (Estudiante)                                   HTTP 200
+  [OK]    login con contraseña incorrecta                               HTTP 401
+  [OK]    petición sin sesión                                          HTTP 401
+
+---- 3. Autorización por rol (RBAC) ----
+  [OK]    admin lista usuarios                                           HTTP 200
+  [OK]    estudiante intenta listar usuarios                             HTTP 403
+  [OK]    docente intenta ver la auditoría completa                     HTTP 403
+  [OK]    docente crea actividad en SO-101                               HTTP 201
+  [OK]    estudiante intenta crear actividad                             HTTP 403
+
+---- 4. Subida y ciclo de estados (pendiente → en_ejecucion → completado) ----
+  [OK]    est_ana sube informe_laboratorio.md                            HTTP 201
+          entrega: a1bacf37-b2ee-48e1-86cf-f8d98a95530a · estado inicial: pendiente
+          estado: completado
+  [OK]    el trabajo termina en 'completado'
+  [OK]    est_ana descarga su resultado                                  HTTP 200
+          sha256=0001684dfa4de8f8603c8fdc9a7fdf4e0e9d8f583005c6d74921e7cb0d564e8e · líneas=68 · palabras=927 · ms=31
+  [OK]    el SHA-256 del servidor coincide con sha256sum local
+  [OK]    el estudiante NO ve la marca posible_duplicado
+  [OK]    est_ana descarga su archivo original                           HTTP 200
+  [OK]    el archivo descargado es idéntico al subido
+
+---- 5. Otros formatos permitidos ----
+  [OK]    sube CSV                                                       HTTP 201
+          estado: completado
+          CSV: filas=800 columnas=8
+  [OK]    el CSV se analiza con 8 columnas
+  [OK]    sube JSON                                                      HTTP 201
+          estado: completado
+  [OK]    el JSON se reconoce como válido
+
+---- 6. Validación de archivos en 3 capas ----
+  [OK]    6 MB rechazado (capa 1: Nginx, 413)                            HTTP 413
+  [OK]    .exe rechazado por extensión (capa 2: API, 415)               HTTP 415
+  [OK]    binario renombrado a .txt pasa la API…                       HTTP 201
+          estado: fallido
+          motivo: El archivo no es texto UTF-8 válido (¿binario disfrazado?)
+  [OK]    …y el worker lo marca 'fallido' (capa 3: UTF-8)
+  [OK]    4.8 MB aceptado (cerca del límite)                            HTTP 201
+          estado: en_ejecucion
+          estado: completado
+          tiempo de procesamiento: 879 ms
+  [OK]    el archivo de 4.8 MB se procesa
+
+---- 7. Detección de duplicados (regla complementaria) ----
+  [OK]    est_bruno sube una copia idéntica                             HTTP 201
+          estado: completado
+  [OK]    el docente consulta el resultado                               HTTP 200
+          posible_duplicado=True · duplicado_con=[{"entrega_id": "a1bacf37-b2ee-48e1-86cf-f8d98a95530a", "estudiante": "est_ana"}]
+  [OK]    el docente VE la marca posible_duplicado
+  [OK]    el estudiante NO ve la marca
+
+---- 8. Reprocesar un trabajo fallido ----
+  [OK]    el docente reencola el trabajo fallido                         HTTP 200
+          estado: fallido
+  [OK]    el estudiante no puede reprocesar                              HTTP 403
+
+---- 9. Cierre de sesión ----
+  [OK]    logout                                                         HTTP 200
+  [OK]    sin cookie ya no hay acceso                                    HTTP 401
+
+== RESUMEN: 37 correctas, 0 fallidas ==
+Evidencia guardada en: /home/edwar/Desktop/OS/proyecto_final_250/entregasegura/docs/evidencias/funcional_20261121_182805.txt

@@ -1,0 +1,10 @@
+{
+  "curso": "SO-101",
+  "actividad": "Informe de laboratorio 1",
+  "grupo": 3,
+  "integrantes": ["estudiante_a", "estudiante_b", "estudiante_c"],
+  "herramientas": {"lenguaje": "C", "compilador": "gcc 14", "so": "Ubuntu 24.04"},
+  "entregables": ["informe.md", "codigo.c", "medidas.csv"],
+  "horas_dedicadas": 12.5,
+  "notas": "Archivo JSON de ejemplo del dataset sintético"
+}

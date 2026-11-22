@@ -1,0 +1,33 @@
+'use strict';
+// Conexión a PostgreSQL con el rol de mínimo privilegio "app_api".
+const { Pool } = require('pg');
+const config = require('./config');
+
+const pool = new Pool({
+  host: config.db.host,
+  port: config.db.port,
+  database: config.db.database,
+  user: config.db.user,
+  password: config.db.password,
+  max: 10,
+  idleTimeoutMillis: 30000,
+  connectionTimeoutMillis: 5000,
+});
+
+// Ejecuta fn(client) dentro de una transacción.
+async function transaccion(fn) {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const r = await fn(client);
+    await client.query('COMMIT');
+    return r;
+  } catch (e) {
+    await client.query('ROLLBACK').catch(() => {});
+    throw e;
+  } finally {
+    client.release();
+  }
+}
+
+module.exports = { pool, transaccion };

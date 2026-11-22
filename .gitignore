@@ -1,0 +1,20 @@
+# Secretos: NUNCA al repositorio
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+
+# Dependencias y basura
+node_modules/
+npm-debug.log*
+.DS_Store
+
+# Archivos grandes del dataset (se regeneran con scripts/generar_dataset.sh)
+dataset/ensayo_largo.txt
+dataset/ensayo_excedido.txt
+
+# Respaldos de la base de datos (contienen hashes de contraseñas)
+backups/
+*.sql.gz

@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>EntregaSegura · CEA</title>
+  <link rel="stylesheet" href="/styles.css">
+  <script src="/app.js" defer></script>
+</head>
+<body>
+  <header class="barra">
+    <div class="marca">
+      <strong>EntregaSegura</strong>
+      <span class="sub">Corporación Educativa Altiplano</span>
+    </div>
+    <div id="sesion" hidden>
+      <span id="quien"></span>
+      <button id="salir" class="sec">Cerrar sesión</button>
+    </div>
+  </header>
+
+  <main>
+    <section id="vista-login" class="tarjeta login" hidden>
+      <h1>Iniciar sesión</h1>
+      <form id="form-login">
+        <label>Usuario <input name="username" autocomplete="username" required></label>
+        <label>Contraseña <input name="password" type="password" autocomplete="current-password" required></label>
+        <button type="submit">Entrar</button>
+        <p id="login-error" class="error" hidden></p>
+      </form>
+    </section>
+
+    <section id="vista-app" hidden>
+      <nav id="pestanas" class="pestanas"></nav>
+      <div id="contenido"></div>
+    </section>
+  </main>
+
+  <dialog id="dialogo">
+    <div class="dialogo-cab">
+      <h2 id="dialogo-titulo"></h2>
+      <button id="dialogo-cerrar" class="sec">Cerrar</button>
+    </div>
+    <div id="dialogo-cuerpo"></div>
+  </dialog>
+
+  <div id="aviso" class="aviso" hidden></div>
+</body>
+</html>
