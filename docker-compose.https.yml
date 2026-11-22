@@ -1,0 +1,13 @@
+# =====================================================================
+# EntregaSegura · Capa extra para HTTPS (SOLO en la EC2).
+# No se usa a mano: infra/configurar_https.sh pone en el .env del servidor
+#     COMPOSE_FILE=docker-compose.yml:docker-compose.https.yml
+# y desde entonces cualquier "docker compose ..." en /opt/entregasegura
+# combina los dos archivos. En local no existe esa línea: solo HTTP.
+# =====================================================================
+services:
+  proxy:
+    ports: ["443:8443"]   # se SUMA al 80 del archivo principal
+    volumes:
+      - ./proxy/nginx-https.conf:/etc/nginx/conf.d/default.conf:ro
+      - /etc/entregasegura/tls:/etc/nginx/tls:ro   # certificado y llave (llave: 640 root:101)

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # =====================================================================
-# Evidencias de hardening (checklist puntos 2, 3, 4, 10 y 11).
+# Evidencias de hardening (checklist puntos 2, 3, 4, 10 y 11; en la EC2 también HTTPS).
 # Uso:  ./scripts/verificar_hardening.sh       (en la EC2: sudo ./scripts/verificar_hardening.sh)
 # =====================================================================
 set -uo pipefail
@@ -70,6 +70,23 @@ if command -v ufw >/dev/null 2>&1; then   # solo en el servidor (EC2 con ufw)
   titulo "9. Host: puertos TCP en escucha y firewall"
   (sudo -n ss -tlnp 2>/dev/null || ss -tln) | sed 's/^/          /'
   (sudo -n ufw status verbose 2>/dev/null || echo "          (ufw: ejecuta el script con sudo para ver el estado)") | sed 's/^/          /'
+fi
+
+if [[ "$(leer_env COMPOSE_FILE)" == *https* ]]; then   # solo en la EC2 con HTTPS activado
+  titulo "10. HTTPS (Let's Encrypt)"
+  FQDN="$(leer_env DUCKDNS_DOMAIN).duckdns.org"
+  R=(--resolve "$FQDN:443:127.0.0.1")
+  CAB="$(curl -sSI "${R[@]}" "https://$FQDN/" 2>&1)"
+  verificar 'curl -fsS "${R[@]}" "https://$FQDN/api/health" >/dev/null' "https://$FQDN responde con un certificado válido"
+  verificar 'grep -qi "^strict-transport-security:" <<<"$CAB"' "HSTS activado"
+  RED="$(curl -sSI -H "Host: $FQDN" http://127.0.0.1/ | grep -i '^location:' | tr -d '\r')"
+  echo "          http://$FQDN -> ${RED#*: }"
+  verificar '[[ "$RED" == *"https://$FQDN/"* ]]' "HTTP público redirige a HTTPS"
+  TLS11="$(echo | timeout 5 openssl s_client -connect 127.0.0.1:443 -servername "$FQDN" -tls1_1 2>&1 | grep -c '^ *Protocol *: *TLSv1.1' || true)"
+  verificar '[[ "$TLS11" == 0 ]]' "TLS 1.1 y anteriores rechazados"
+  verificar '[[ "$(leer_env COOKIE_SECURE)" == true ]]' "cookie de sesión con la marca Secure (COOKIE_SECURE=true)"
+  echo | timeout 5 openssl s_client -connect 127.0.0.1:443 -servername "$FQDN" 2>/dev/null \
+    | openssl x509 -noout -subject -issuer -enddate | sed 's/^/          /'
 fi
 
 resumen
