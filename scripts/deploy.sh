@@ -14,7 +14,17 @@ DEPLOY_KEY="${DEPLOY_KEY:-/home/ubuntu/.ssh/entregasegura_deploy}"
 if [[ -d .git ]]; then
   echo "[1] Actualizando el código desde GitHub"
   if [[ -f "$DEPLOY_KEY" ]]; then export GIT_SSH_COMMAND="ssh -i $DEPLOY_KEY -o IdentitiesOnly=yes"; fi
-  git -c safe.directory="$PWD" pull --ff-only
+  G=(git -c safe.directory="$PWD")
+  "${G[@]}" fetch -q
+  # Las evidencias que generan aquí las pruebas se traen al PC y se suben desde allí. Si una copia
+  # suelta es IDÉNTICA a la de GitHub se quita (el pull la trae igual); si difiere, se deja y el
+  # pull se detiene para que nadie pierda nada.
+  while IFS= read -r f; do
+    if [[ "$("${G[@]}" rev-parse -q --verify "@{u}:$f" 2>/dev/null)" == "$("${G[@]}" hash-object "$f")" ]]; then
+      rm -f -- "$f"
+    fi
+  done < <("${G[@]}" ls-files --others --exclude-standard -- docs/evidencias)
+  "${G[@]}" pull --ff-only
 fi
 
 echo "[2] Permisos"

@@ -9,7 +9,7 @@ consola de AWS → EC2 → la instancia → **Connect → Session Manager → Co
 ```bash
 cd /opt/entregasegura            # en la EC2 (en local: la carpeta del repo)
 source <(grep -E '^(ADMIN|DEMO)_PASSWORD=' .env)   # carga las contraseñas en la sesión (EC2: sudo -s antes)
-B=http://localhost               # o http://entregasegura-uptc.duckdns.org desde tu PC
+B=http://localhost               # o https://entregasegura-uptc.duckdns.org desde tu PC
 
 # Iniciar sesión como alguien (guarda la cookie en /tmp/<usuario>.jar)
 entrar() { curl -s -c /tmp/$1.jar -H 'Content-Type: application/json' \
@@ -28,7 +28,7 @@ docker compose exec db psql -U postgres -d entregasegura
 
 | # | Punto | Qué mostrar y decir | Comando |
 |---|---|---|---|
-| 1 | Despliegue | La app en `http://entregasegura-uptc.duckdns.org` (DuckDNS sigue a la IP pública en cada arranque); en la consola EC2: región `us-east-1`, tipo `t3.small` | `curl http://entregasegura-uptc.duckdns.org/api/health` |
+| 1 | Despliegue | La app en `https://entregasegura-uptc.duckdns.org` (candado: certificado de Let's Encrypt; DuckDNS sigue a la IP pública en cada arranque); en la consola EC2: región `us-east-1`, tipo `t3.small` | `curl https://entregasegura-uptc.duckdns.org/api/health` |
 | 2 | Contenedores | 4 servicios y el papel de cada uno | `docker compose ps` |
 | 3 | Linux y procesos | SO, servicio Docker, procesos dentro del worker (corren como `node`, no root) | `cat /etc/os-release` · `systemctl status docker` · `docker top entregasegura-worker-1` |
 | 4 | Recursos | **Interpretar un dato**: «el worker usa X MB de 256 MB; en la prueba de carga tocó el techo de 50 % de CPU, que es su límite de 0.5 CPU» | `docker stats --no-stream` · `free -h` · `df -h` |
@@ -37,8 +37,8 @@ docker compose exec db psql -U postgres -d entregasegura
 | 7 | Aislamiento | Estudiante B pide el ID de la entrega de A → 404 (no 403: no confirmamos que exista) | `./scripts/prueba_aislamiento.sh` |
 | 8 | Procesamiento | Subir un archivo y ver `pendiente → en_ejecucion → completado` | UI + `docker compose logs -f worker` |
 | 9 | Persistencia | Reiniciar BD y worker; los datos siguen | `docker compose restart db worker` · `./scripts/prueba_persistencia.sh` |
-| 10 | Hardening | Sin root, solo lectura, sin capabilities, `.env` 600 | `./scripts/verificar_hardening.sh` · `ls -l .env` |
-| 11 | Red | **Solo el 80 abierto** en el Security Group; el 22 cerrado porque se administra con Session Manager; BD y worker en red `internal` sin salida | Security Group · `ss -tulpn` · `ufw status` · `./scripts/verificar_hardening.sh` (sección 5) |
+| 10 | Hardening | Sin root, solo lectura, sin capabilities, `.env` 600; en la EC2 también HTTPS (sección 10) | `./scripts/verificar_hardening.sh` · `ls -l .env` |
+| 11 | Red | **Solo 443 y 80 abiertos** en el Security Group (el 80 solo redirige a HTTPS); el 22 cerrado porque se administra con Session Manager; BD y worker en red `internal` sin salida | Security Group · `ss -tulpn` · `ufw status` · `./scripts/verificar_hardening.sh` (sección 5) |
 | 12 | Auditoría | Usuario, acción, recurso, resultado, IP y fecha | Pestaña *Auditoría* del admin, o `SELECT ts, username, accion, resultado, ip FROM audit_log ORDER BY ts DESC LIMIT 10;` |
 | 13 | Autenticidad | RN-1 en vivo: cierre, 403, prórroga, 201 | `./scripts/demo_rn1.sh` o botón «Crear (cierra en 1 minuto)» en la UI |
 | 14 | Repositorio | Dockerfiles, compose, `.env.example`, ningún secreto versionado (revisa **todo el historial**, no solo los archivos actuales) | GitHub · `./scripts/buscar_secretos.sh` |
@@ -68,7 +68,15 @@ docker compose exec db psql -U postgres -d entregasegura
   temporales. Con IMDSv2 obligatorio hace falta un token previo, así que una vulnerabilidad SSRF en
   la app no basta para robarlas.
 - **¿ufw protege los puertos de Docker?** No: Docker escribe sus propias reglas de iptables y las
-  salta. Por eso el Security Group es la capa principal y el compose publica un solo puerto.
+  salta. Por eso el Security Group es la capa principal y solo el contenedor del proxy publica puertos.
+- **¿Cómo obtuvieron el certificado HTTPS y quién lo renueva?** Es de Let's Encrypt (gratis, 90 días).
+  Para probar que el dominio es nuestro usamos el reto DNS-01: certbot publica un código en un
+  registro TXT de DuckDNS y Let's Encrypt lo consulta. `certbot.timer` lo renueva solo y un gancho
+  recarga Nginx con la señal `HUP`, sin cortar conexiones. La llave privada es `640 root:101`: solo
+  la lee el grupo del proceso de Nginx.
+- **¿Qué es HSTS y por qué la cookie lleva `Secure`?** HSTS le dice al navegador «a este sitio, solo
+  por HTTPS», así nadie puede forzar una versión HTTP en una Wi-Fi hostil. `Secure` impide que la
+  cookie de sesión viaje sin cifrar. El HTTP público solo responde con una redirección 301.
 
 ## Los 6 retos sorpresa
 

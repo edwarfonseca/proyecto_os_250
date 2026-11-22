@@ -463,7 +463,7 @@ Se generan con un script (`scripts/generar_dataset.sh`) para que sean reproducib
 
 ### FASE 11 · Sustentación y cierre de costos · *Día D* · 💰 ≈ 0.70 USD
 
-- [ ] **2–3 días antes:** pasarle al docente la dirección `http://entregasegura-uptc.duckdns.org`. *(Sustituye a la Elastic IP: el nombre de DuckDNS sigue a la IP sola y no cuesta nada; ver `docs/DESPLIEGUE_AWS.md`.)*
+- [ ] **2–3 días antes:** pasarle al docente la dirección `https://entregasegura-uptc.duckdns.org`. *(Sustituye a la Elastic IP: el nombre de DuckDNS sigue a la IP sola y no cuesta nada; ver `docs/DESPLIEGUE_AWS.md`.)*
 - [ ] **El día D, 30 min antes:** Start Lab, Start EC2, `docker compose ps` y `curl /api/health`, y tener abiertas en pestañas las sesiones de los 3 roles.
 - [ ] **Después de la nota, en este orden:**
   1. Bajar el último respaldo (`pg_dump` y `docs/evidencias`).

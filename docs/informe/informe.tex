@@ -113,7 +113,7 @@ Si dos estudiantes distintos entregan archivos con el mismo SHA-256 en la misma 
 % =====================================================================
 \section{Arquitectura}\label{sec:arq}
 
-La Fig.~\ref{fig:arq} muestra el despliegue y la Tabla~\ref{tab:servicios}, los servicios. Todo corre en una sola instancia EC2 \cod{t3.small} (2~vCPU, 2~GiB) con Ubuntu Server 24.04 en \cod{us-east-1}. El único puerto publicado es el 80 del proxy, que redirige al 8080 de Nginx. La API está conectada a dos redes de Docker: \cod{edge}, para que el proxy la alcance, e \cod{internal}, para hablar con la base de datos. El worker y la base de datos solo están en \cod{internal}, una red declarada con \cod{internal: true} y por tanto sin salida a Internet.
+La Fig.~\ref{fig:arq} muestra el despliegue y la Tabla~\ref{tab:servicios}, los servicios. Todo corre en una sola instancia EC2 \cod{t3.small} (2~vCPU, 2~GiB) con Ubuntu Server 24.04 en \cod{us-east-1}. Solo el proxy publica puertos: el 443 (HTTPS, al 8443 de Nginx) y el 80, que únicamente redirige a HTTPS. El servicio se publica en \cod{entregasegura-uptc.duckdns.org}, un subdominio gratuito que sigue a la IP pública en cada arranque, y Nginx termina TLS con un certificado de Let's Encrypt. La API está conectada a dos redes de Docker: \cod{edge}, para que el proxy la alcance, e \cod{internal}, para hablar con la base de datos. El worker y la base de datos solo están en \cod{internal}, una red declarada con \cod{internal: true} y por tanto sin salida a Internet.
 
 \begin{figure*}[!t]
 \centering
@@ -128,7 +128,7 @@ La Fig.~\ref{fig:arq} muestra el despliegue y la Tabla~\ref{tab:servicios}, los 
   et/.style={font=\scriptsize, text=tinta, fill=white, inner sep=1pt},
 ]
 \node[ext] (usr) {Usuarios\\(navegador)};
-\node[ext, right=1.15cm of usr] (sg) {Security Group\\solo TCP 80};
+\node[ext, right=1.15cm of usr] (sg) {Security Group\\TCP 80 y 443};
 \node[caja, right=1.25cm of sg] (proxy) {\textbf{proxy}\\Nginx sin privilegios\\uid 101\\0,25 CPU · 64 MB};
 \node[caja, right=1.35cm of proxy] (api) {\textbf{api}\\Node.js / Express 5\\uid 1000\\0,5 CPU · 256 MB};
 \node[caja, right=2.2cm of api] (db) {\textbf{db}\\PostgreSQL 16\\usuario postgres\\0,5 CPU · 384 MB};
@@ -142,8 +142,8 @@ La Fig.~\ref{fig:arq} muestra el despliegue y la Tabla~\ref{tab:servicios}, los 
 \end{scope}
 \node[anchor=north west, font=\scriptsize\bfseries, text=tinta] at (ec2.north west) {EC2 t3.small · Ubuntu 24.04 · Docker · ufw · IMDSv2};
 \node[anchor=south west, font=\scriptsize, text=tinta, align=left] at (ec2.south west) {red \texttt{edge}: proxy, api\\red \texttt{internal} (sin Internet): api, worker, db};
-\draw[fl] (usr) -- node[et, above=1pt]{HTTP} (sg);
-\draw[fl] (sg) -- node[et, above=1pt]{:80$\to$8080} (proxy);
+\draw[fl] (usr) -- node[et, above=1pt]{HTTPS} (sg);
+\draw[fl] (sg) -- node[et, above=1pt]{:443$\to$8443} (proxy);
 \draw[fl] (proxy) -- node[et, above=1pt]{\texttt{/api/*}} (api);
 \draw[fl] (api) -- node[et, above=1pt, align=center]{SQL \texttt{app\_api}\\INSERT + NOTIFY} (db);
 \draw[fl] (worker) -- node[et, right=2pt, align=left]{LISTEN · SKIP LOCKED\\SQL \texttt{app\_worker}} (db);
@@ -152,7 +152,7 @@ La Fig.~\ref{fig:arq} muestra el despliegue y la Tabla~\ref{tab:servicios}, los 
 \draw[thick, tinta!60] (files) -- (worker);
 \draw[fl, dashed] (ec2.north -| ssm.south) ++(0,0) -- node[et, right=2pt]{agente: HTTPS saliente} (ssm.south);
 \end{tikzpicture}}
-\caption{Arquitectura de despliegue. Solo el proxy publica un puerto; la base de datos y el worker no tienen salida a Internet; la administración se hace con AWS Systems Manager, sin abrir el puerto 22.}
+\caption{Arquitectura de despliegue. Solo el proxy publica puertos (443, y 80 para redirigir); la base de datos y el worker no tienen salida a Internet; la administración se hace con AWS Systems Manager, sin abrir el puerto 22.}
 \label{fig:arq}
 \end{figure*}
 
@@ -233,7 +233,7 @@ El proveedor de Internet del equipo usa CGNAT: cada conexión sale por una IP di
 % =====================================================================
 \section{Seguridad y endurecimiento}\label{sec:seg}
 
-La Tabla~\ref{tab:hardening} resume las medidas y cómo se verifican. El script \cod{verificar\_hardening.sh} reúne 14 comprobaciones automáticas, que pasan en local y en AWS.
+La Tabla~\ref{tab:hardening} resume las medidas y cómo se verifican. El script \cod{verificar\_hardening.sh} reúne 14 comprobaciones automáticas, que pasan en local y en AWS; en AWS añade cinco sobre HTTPS (19/19).
 
 \begin{table}[!t]
 \caption{Medidas de endurecimiento y su evidencia}\label{tab:hardening}
@@ -253,14 +253,15 @@ Imágenes multietapa & \cod{npm ci -{}-omit=dev}; código propiedad de root\\
 \multicolumn{2}{@{}l}{\textit{Host EC2}}\\
 Usuario de servicio & \cod{entregas} sin \cod{sudo} y fuera del grupo \cod{docker}\\
 SSH & Sin contraseñas, sin root, solo \cod{ubuntu}, 3 intentos\\
-Firewall doble & Security Group (solo 80) + \cod{ufw} con denegación por defecto\\
+Firewall doble & Security Group (solo 80 y 443) + \cod{ufw} con denegación por defecto\\
 Parches & \cod{unattended-upgrades} activo\\
 Servicios & \cod{multipathd}, \cod{ModemManager}, \cod{udisks2} apagados\\
 Docker & Rotación de logs, \cod{no-new-privileges} y \cod{live-restore}\\
 Metadatos & IMDSv2 obligatorio (token de sesión)\\
 \midrule
 \multicolumn{2}{@{}l}{\textit{Red, datos y secretos}}\\
-Exposición & Desde Internet: 80 abierto; 22, 3000 y 5432 cerrados\\
+Exposición & Desde Internet: 443, y 80 solo para redirigir; 22, 3000 y 5432 cerrados\\
+Cifrado en tránsito & TLS 1.2/1.3 (Let's Encrypt), HSTS y cookie \cod{Secure}\\
 Aislamiento de red & El worker no resuelve ni alcanza Internet\\
 Auditoría inmutable & \cod{app\_api}: \textit{permission denied}; superusuario: bloqueado por el \textit{trigger}\\
 Secretos & \cod{.env} con permisos 600; ningún valor real en el historial de git\\
@@ -268,7 +269,7 @@ Secretos & \cod{.env} con permisos 600; ningún valor real en el historial de gi
 \end{tabular}
 \end{table}
 
-Tres decisiones merecen una justificación aparte. Primero, pertenecer al grupo \cod{docker} equivale a tener root en el host~\cite{docker-sec}: por eso el usuario de servicio no está en él, el despliegue lo ejecuta el administrador con privilegios y los \emph{procesos} de la aplicación corren sin privilegios dentro de los contenedores. Segundo, Docker escribe sus propias reglas de \textit{iptables} para los puertos publicados y estas se evalúan antes que las de \cod{ufw}~\cite{docker-fw}: un puerto publicado queda abierto aunque \cod{ufw} lo niegue. Por eso el Security Group es la capa principal y el \cod{docker-compose.yml} publica un único puerto. Tercero, cada servicio recibe solo sus propios secretos: el worker no conoce el secreto JWT ni las contraseñas de los usuarios, y la contraseña de su rol de base de datos es distinta de la de la API. Esto sigue las recomendaciones de la guía NIST SP~800-190 para contenedores~\cite{nist190}.
+Tres decisiones merecen una justificación aparte. Primero, pertenecer al grupo \cod{docker} equivale a tener root en el host~\cite{docker-sec}: por eso el usuario de servicio no está en él, el despliegue lo ejecuta el administrador con privilegios y los \emph{procesos} de la aplicación corren sin privilegios dentro de los contenedores. Segundo, Docker escribe sus propias reglas de \textit{iptables} para los puertos publicados y estas se evalúan antes que las de \cod{ufw}~\cite{docker-fw}: un puerto publicado queda abierto aunque \cod{ufw} lo niegue. Por eso el Security Group es la capa principal y solo el contenedor del proxy publica puertos. Tercero, cada servicio recibe solo sus propios secretos: el worker no conoce el secreto JWT ni las contraseñas de los usuarios, y la contraseña de su rol de base de datos es distinta de la de la API. Esto sigue las recomendaciones de la guía NIST SP~800-190 para contenedores~\cite{nist190}.
 
 % =====================================================================
 \section{Monitoreo y operación}\label{sec:ops}
@@ -316,7 +317,7 @@ Aislamiento entre usuarios & 27/27 & 27/27\\
 Regla de negocio RN-1 & 6/6 & 6/6\\
 Recuperación del worker & 13/13 & 13/13\\
 Persistencia (\cod{down} + \cod{up}) & 4/4 & 4/4\\
-Endurecimiento & 14/14 & 14/14\\
+Endurecimiento & 14/14 & 19/19\\
 Carga: 50 trabajos, concurrencia 1 y 2 & 50/50 & 50/50\\
 \bottomrule
 \end{tabular}
@@ -397,7 +398,7 @@ La Tabla~\ref{tab:checklist} relaciona cada punto del checklist de evaluación c
 \toprule
 \# & Punto & Dónde se cumple y evidencia\\
 \midrule
-1 & Despliegue & EC2 \cod{t3.small}; \cod{/api/health} por la IP pública (Sec.~\ref{sec:ops})\\
+1 & Despliegue & EC2 \cod{t3.small}; \cod{/api/health} por HTTPS en el dominio público (Sec.~\ref{sec:ops})\\
 2 & Contenedores & Cuatro servicios con función propia (Tabla~\ref{tab:servicios})\\
 3 & Linux y procesos & uid sin privilegios, \textit{systemd}, \cod{docker top} (Tabla~\ref{tab:hardening})\\
 4 & Recursos & Límites por \textit{cgroups} e interpretación de la carga (Fig.~\ref{fig:carga})\\
@@ -406,8 +407,8 @@ La Tabla~\ref{tab:checklist} relaciona cada punto del checklist de evaluación c
 7 & Aislamiento & 404 ante entregas ajenas; 27/27 comprobaciones (Tabla~\ref{tab:pruebas})\\
 8 & Procesamiento & Cola con \cod{SKIP LOCKED}, estados y reintentos (D1, D6)\\
 9 & Persistencia & Volúmenes \cod{pgdata} y \cod{files}; \cod{down} + \cod{up} sin pérdida\\
-10 & Endurecimiento & 14/14 comprobaciones en contenedores y host (Tabla~\ref{tab:hardening})\\
-11 & Red & Solo el 80 abierto; red \cod{internal} sin salida (Sec.~\ref{sec:seg})\\
+10 & Endurecimiento & 14/14 en local y 19/19 en AWS con HTTPS (Tabla~\ref{tab:hardening})\\
+11 & Red & Solo 443 y 80 (redirige); red \cod{internal} sin salida (Sec.~\ref{sec:seg})\\
 12 & Auditoría & \cod{audit\_log} inmutable, trazabilidad y denegados (D5)\\
 13 & Autenticidad & Regla RN-1 en vivo: 201, 403, prórroga, 201\\
 14 & Repositorio & Dockerfiles, Compose, \cod{.env.example}; ningún secreto en el historial de git\\
@@ -425,7 +426,7 @@ La estrategia fue desarrollar y depurar todo en local con Docker Compose, sin co
 \item Ningún servicio administrado (RDS, balanceador, NAT, ECR o CloudWatch Logs).
 \item Las imágenes se construyen en la propia instancia.
 \item Disco gp3 de 16~GB.
-\item Elastic IP solo los días previos a la sustentación.
+\item Sin Elastic IP: un subdominio gratuito de DuckDNS sigue a la IP pública.
 \end{itemize}
 Con los precios de lista de \cod{us-east-1} (0,0208~USD/h la instancia, 0,005~USD/h la IPv4 y 0,08~USD por GB-mes el disco), la primera sesión en la nube costó unos 0,02~USD. El disco cuesta unos 0,04~USD al día aunque la instancia esté apagada. El total proyectado hasta la sustentación es de 3 a 5~USD, frente a unos 49~USD disponibles.
 
@@ -433,7 +434,7 @@ Con los precios de lista de \cod{us-east-1} (0,0208~USD/h la instancia, 0,005~US
 \section{Limitaciones y trabajo futuro}\label{sec:lim}
 
 \begin{itemize}
-\item \textbf{Sin TLS.} El servicio se publica por HTTP y la cookie no lleva la marca \cod{Secure}. Con un dominio, el siguiente paso es HTTPS con certificados de Let's Encrypt en Nginx.
+\item \textbf{Servicios gratuitos de terceros.} El nombre (DuckDNS) y el certificado (Let's Encrypt) dependen de servicios sin acuerdo de nivel de servicio; en producción convendría un dominio propio. HSTS se dejó en un día mientras se estrena.
 \item \textbf{Docker con root.} El demonio de Docker se ejecuta como root; Docker \textit{rootless} reduciría el impacto de un escape de contenedor.
 \item \textbf{Un único punto de fallo.} Hay una sola instancia y los respaldos se guardan en ella; deberían copiarse fuera (por ejemplo, a S3) y probarse su restauración.
 \item \textbf{Escala de la cola.} Basta para decenas de trabajos por segundo; para volúmenes mayores convendría un \textit{broker} dedicado.

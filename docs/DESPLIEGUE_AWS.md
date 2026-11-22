@@ -31,7 +31,7 @@ la sesión del lab**. No las pegues en chats ni las subas a git.
 
 ## 1. Security Group
 
-Solo el puerto 80 abierto. Comandos en [infra/security-group.md](../infra/security-group.md).
+Solo los puertos 80 y 443 abiertos (el 80 solo redirige a HTTPS). Comandos en [infra/security-group.md](../infra/security-group.md).
 
 ## 2. Lanzar la instancia (una sola vez)
 
@@ -76,7 +76,7 @@ Contraseñas de la app en el servidor: `infra/ssm_ejecutar.sh "grep -E '^(ADMIN|
 
 Para actualizar tras un `git push`: `infra/ssm_ejecutar.sh './scripts/deploy.sh' 1800`.
 
-### Nombre fijo: `http://entregasegura-uptc.duckdns.org` (en vez de Elastic IP)
+### Nombre fijo: `entregasegura-uptc.duckdns.org` (en vez de Elastic IP)
 
 La IP pública cambia en cada Stop/Start. En lugar de pagar una Elastic IP se usa un subdominio
 gratuito de [DuckDNS](https://www.duckdns.org): en cada arranque la EC2 le avisa de su IP nueva y el
@@ -89,7 +89,7 @@ nombre la sigue (TTL de 60 s: responde ~1 min después de encenderla).
    ```
    El script pide el token sin mostrarlo. **No** se pasa por `infra/ssm_ejecutar.sh`: los comandos
    de Run Command quedan guardados en el historial de la consola de AWS.
-3. Desde el PC: `curl http://entregasegura-uptc.duckdns.org/api/health`.
+3. Desde el PC: `curl http://entregasegura-uptc.duckdns.org/api/health` (después de activar HTTPS: `https://`).
 
 Cómo funciona: [infra/configurar_duckdns.sh](../infra/configurar_duckdns.sh) guarda `DUCKDNS_DOMAIN` y
 `DUCKDNS_TOKEN` en el `.env` (600, nunca en git) e instala el servicio systemd `entregasegura-duckdns`.
@@ -101,9 +101,41 @@ capabilities y con el sistema de archivos en solo lectura. Ver cómo fue la últ
 Ojo: con la instancia apagada, el nombre sigue apuntando a la última IP, que AWS puede asignar a
 otra persona. Usar el nombre solo con la instancia encendida.
 
+### HTTPS con Let's Encrypt (`https://entregasegura-uptc.duckdns.org`)
+
+Requiere el nombre de DuckDNS. Certificado gratuito de 90 días que se renueva solo.
+
+```bash
+aws ec2 authorize-security-group-ingress --group-id <SG> --ip-permissions \
+  'IpProtocol=tcp,FromPort=443,ToPort=443,IpRanges=[{CidrIp=0.0.0.0/0,Description="HTTPS EntregaSegura"}]'
+infra/ssm_ejecutar.sh 'PRUEBA=si bash infra/configurar_https.sh' 900   # ensayo con el servidor de pruebas de Let's Encrypt
+infra/ssm_ejecutar.sh 'bash infra/configurar_https.sh' 900              # certificado real y HTTPS activo
+curl https://entregasegura-uptc.duckdns.org/api/health                     # desde tu PC
+```
+
+Cómo funciona ([infra/configurar_https.sh](../infra/configurar_https.sh)):
+
+- **Reto DNS-01.** Para comprobar que el nombre es nuestro, Let's Encrypt pide publicar un código en
+  un registro TXT del dominio. El gancho [infra/certbot_ganchos.sh](../infra/certbot_ganchos.sh) lo
+  publica en DuckDNS con el token del `.env` y espera a que lo vean sus 9 servidores DNS. No hace
+  falta abrir ningún puerto para obtener el certificado. No se envía ningún correo a Let's Encrypt.
+- **Renovación.** `certbot.timer` revisa dos veces al día (y al arrancar, si se perdió una revisión)
+  y renueva cuando quedan menos de 30 días. El gancho copia el certificado a `/etc/entregasegura/tls`
+  (llave `640 root:101`, legible solo por el grupo de Nginx) y recarga Nginx con `HUP`, sin cortar
+  conexiones. Los ganchos viven en `/usr/local/lib/entregasegura` (dueño root): un script que root
+  ejecuta solo no debe poder modificarlo el usuario `entregas`.
+- **Nginx.** El `.env` de la EC2 lleva `COMPOSE_FILE=docker-compose.yml:docker-compose.https.yml`, así que
+  el proxy publica también el 443 y usa [proxy/nginx-https.conf](../proxy/nginx-https.conf): TLS 1.2/1.3,
+  HTTP/2 y HSTS. Todo el HTTP público, por nombre o por IP, se redirige con 301 a `https://`. Solo
+  `http://localhost` desde la propia EC2 sigue en HTTP (lo usan `deploy.sh` y los scripts de prueba).
+- **Cookie.** `COOKIE_SECURE=true`: la cookie de sesión solo viaja cifrada.
+- **En local no cambia nada:** `http://localhost`, sin certificado.
+- **Volver a solo HTTP:** `infra/ssm_ejecutar.sh 'bash infra/configurar_https.sh desactivar' 900`. HSTS
+  está en 1 día a propósito: los navegadores que ya entraron insistirán en HTTPS durante 24 h como máximo.
+
 ## 5. Comprobar que sobrevive al apagado (crítico)
 
-Stop + Start y, con la **nueva IP** (o con el nombre), `curl http://entregasegura-uptc.duckdns.org/api/health`. Debe responder sin hacer nada:
+Stop + Start y `curl https://entregasegura-uptc.duckdns.org/api/health`. Debe responder sin hacer nada:
 Docker arranca con el sistema y los contenedores tienen `restart: unless-stopped`.
 (Resultado del 21 nov 2026: de vuelta en línea 38 s después del apagado.)
 
@@ -122,11 +154,11 @@ o `aws cloudwatch get-metric-statistics ... CPUCreditBalance`).
 
 ## 7. Antes y después de la sustentación (Fase 11)
 
-- **Ya no hace falta Elastic IP:** la dirección para el docente y la demo es `http://entregasegura-uptc.duckdns.org`
+- **Ya no hace falta Elastic IP:** la dirección para el docente y la demo es `https://entregasegura-uptc.duckdns.org`
   (sección 4). Solo si el docente exigiera una IP fija: EC2 → *Elastic IPs* → *Allocate* →
   *Associate*, 2–3 días antes y no antes, porque cobra aunque la instancia esté parada.
 - **El día D, 30 min antes:** Start Lab → Start EC2 → `docker compose ps` →
-  `curl http://entregasegura-uptc.duckdns.org/api/health` →
+  `curl https://entregasegura-uptc.duckdns.org/api/health` →
   sesiones abiertas de los 3 roles y una pestaña con Session Manager.
 - **Después de la nota, en este orden:** `infra/ssm_ejecutar.sh './scripts/backup_db.sh'` y traer
   `backups/` y `docs/evidencias/` → **Terminate** la instancia → **Release** la Elastic IP (si se usó) →

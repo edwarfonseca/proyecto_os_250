@@ -68,7 +68,7 @@ Se crean solos al primer arranque (`SEED_DEMO=true`). Las contraseñas están en
 | `./scripts/prueba_carga.sh 1` y `... 2` | 5 estudiantes × 10 entregas = 50 trabajos con concurrencia 1 y 2: tiempos y pico de CPU/RAM del worker |
 | `./scripts/prueba_recuperacion.sh` | Worker detenido, apagado ordenado y `kill -9` a mitad de un trabajo: nada se pierde |
 | `./scripts/prueba_persistencia.sh` | `docker compose down` + `up -d`: los datos siguen ahí |
-| `./scripts/verificar_hardening.sh` | Sin root, solo lectura, sin capabilities, límites, red aislada, auditoría inmutable, `.env` 600 |
+| `./scripts/verificar_hardening.sh` | Sin root, solo lectura, sin capabilities, límites, red aislada, auditoría inmutable, `.env` 600 y, en la EC2, HTTPS |
 | `./scripts/buscar_secretos.sh` | Que ningún `.env`, llave ni valor real del `.env` esté en **todo** el historial de git |
 
 En la EC2 se ejecutan con `sudo` (el usuario de servicio no pertenece al grupo `docker`).
@@ -83,13 +83,15 @@ Los resultados interpretados están en [docs/resultados-pruebas.md](docs/resulta
 | Regla de negocio RN-1 | [api/src/middleware/rn1.js](api/src/middleware/rn1.js) |
 | Auditoría (una sola función) | [api/src/audit.js](api/src/audit.js) |
 | Roles de BD con mínimo privilegio y `audit_log` append-only | [db/migrations/002_roles_grants.sql](db/migrations/002_roles_grants.sql) |
-| Validación de archivos | [proxy/nginx.conf](proxy/nginx.conf) · [api/src/upload.js](api/src/upload.js) · [worker/src/processors/analizar.js](worker/src/processors/analizar.js) |
+| Validación de archivos | [proxy/comun.conf](proxy/comun.conf) · [api/src/upload.js](api/src/upload.js) · [worker/src/processors/analizar.js](worker/src/processors/analizar.js) |
 | Hardening de contenedores | [docker-compose.yml](docker-compose.yml) (`x-hardened`) |
 | Hardening del host | [infra/hardening_host.sh](infra/hardening_host.sh) · [infra/security-group.md](infra/security-group.md) |
+| HTTPS (solo en la EC2) | [proxy/nginx-https.conf](proxy/nginx-https.conf) · [infra/configurar_https.sh](infra/configurar_https.sh) |
 
 Contraseñas con argon2id · JWT de 1 h en cookie `HttpOnly` + `SameSite=Strict` · rate limit de
 5 intentos fallidos por minuto en el login · `helmet` y CSP estricta · IDs UUID (pero la defensa
-real es la comprobación de propiedad, no el UUID).
+real es la comprobación de propiedad, no el UUID) · en AWS, HTTPS con Let's Encrypt (TLS 1.2/1.3,
+HSTS y cookie `Secure`).
 
 ## Operación
 
@@ -108,12 +110,13 @@ docker stats --no-stream                  # CPU y RAM de cada contenedor
 ## Despliegue en AWS
 
 Paso a paso en [docs/DESPLIEGUE_AWS.md](docs/DESPLIEGUE_AWS.md). En resumen: una sola EC2
-`t3.small` con Ubuntu 24.04, **solo el puerto 80 abierto** y administración por AWS Systems Manager
+`t3.small` con Ubuntu 24.04, **solo los puertos 443 y 80 abiertos** (el 80 solo redirige a HTTPS) y administración por AWS Systems Manager
 (sin SSH): `infra/ssm_ejecutar.sh 'bash infra/hardening_host.sh'` y `infra/ssm_ejecutar.sh './scripts/deploy.sh'`.
 
-Dirección en la nube: **http://entregasegura-uptc.duckdns.org** (solo con la instancia encendida). Es un subdominio gratuito
+Dirección en la nube: **https://entregasegura-uptc.duckdns.org** (solo con la instancia encendida). Es un subdominio gratuito
 de DuckDNS que sigue a la IP pública en cada arranque, en vez de una Elastic IP de pago
-([infra/configurar_duckdns.sh](infra/configurar_duckdns.sh)).
+([infra/configurar_duckdns.sh](infra/configurar_duckdns.sh)), con un certificado gratuito de
+Let's Encrypt que se renueva solo ([infra/configurar_https.sh](infra/configurar_https.sh)).
 
 ## Estructura
 

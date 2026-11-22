@@ -7,7 +7,8 @@ AWS no permite nombres que empiecen por `sg-`, por eso no se llama `sg-entregase
 
 | Puerto | Protocolo | Origen | Motivo |
 |---|---|---|---|
-| 80 | TCP | `0.0.0.0/0` | Acceso público a la aplicación (Nginx). **Es el único puerto abierto.** |
+| 443 | TCP | `0.0.0.0/0` | Acceso público a la aplicación por HTTPS (Nginx, certificado de Let's Encrypt). |
+| 80 | TCP | `0.0.0.0/0` | Solo redirige a HTTPS (301). **Son los dos únicos puertos abiertos.** |
 
 Todo lo demás queda **denegado por defecto**:
 
@@ -41,7 +42,7 @@ porque están en una red Docker con `internal: true`.
 Docker escribe sus propias reglas de `iptables` para los puertos publicados y esas reglas se
 evalúan **antes** que las de `ufw`. Un puerto publicado por Docker queda abierto aunque `ufw` diga
 que no. Por eso el Security Group, que filtra fuera de la máquina, es la capa principal, y por eso
-`docker-compose.yml` publica **un único puerto** (80 → 8080 de Nginx).
+solo el contenedor del proxy publica puertos (80 → 8080 y, en la EC2, 443 → 8443 de Nginx).
 
 ## Cómo se creó (AWS CLI)
 
@@ -53,5 +54,8 @@ SG=$(aws ec2 create-security-group --group-name entregasegura-sg \
       --query GroupId --output text)
 aws ec2 authorize-security-group-ingress --group-id "$SG" \
   --ip-permissions 'IpProtocol=tcp,FromPort=80,ToPort=80,IpRanges=[{CidrIp=0.0.0.0/0,Description=HTTP EntregaSegura}]'
+# 22 nov 2026, al activar HTTPS:
+aws ec2 authorize-security-group-ingress --group-id "$SG" \
+  --ip-permissions 'IpProtocol=tcp,FromPort=443,ToPort=443,IpRanges=[{CidrIp=0.0.0.0/0,Description="HTTPS EntregaSegura"}]'
 aws ec2 describe-security-group-rules --filters Name=group-id,Values="$SG" --output table
 ```

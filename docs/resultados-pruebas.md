@@ -12,9 +12,13 @@
 | Carga (c=1 y c=2) | `prueba_carga.sh` | ✅ 50/50 en ambas | ✅ 50/50 en ambas |
 | Recuperación | `prueba_recuperacion.sh` | ✅ 13/13 | ✅ 13/13 |
 | Persistencia | `prueba_persistencia.sh` | ✅ 4/4 | ✅ 4/4 |
-| Hardening | `verificar_hardening.sh` | ✅ 14/14 | ✅ 14/14 |
+| Hardening | `verificar_hardening.sh` | ✅ 14/14 | ✅ 19/19 (14 + 5 de HTTPS, 22 nov) |
 | Hardening del host | `infra/hardening_host.sh` (evidencias `host_antes` / `host_despues`) | — | ✅ 6 medidas |
 | Sobrevive a Stop/Start | manual | — | ✅ en línea 38 s después del apagado |
+| HTTPS (`https://entregasegura-uptc.duckdns.org`) | `verificar_hardening.sh` sección 10 | — | ✅ certificado válido, HSTS, 301 desde HTTP, sin TLS 1.1, cookie `Secure` |
+
+Tras activar HTTPS (22 nov 2026) se repitieron en AWS la funcional (37/37), el aislamiento (27/27)
+y RN-1 (6/6): todo igual, con la cookie de sesión ya marcada `Secure`.
 
 ## Prueba de carga: 5 estudiantes × 10 entregas = 50 trabajos
 

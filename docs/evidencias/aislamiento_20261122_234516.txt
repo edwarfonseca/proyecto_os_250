@@ -1,0 +1,57 @@
+== aislamiento · 2026-11-22 23:45:16 UTC · ip-172-31-47-157 · http://localhost:80 ==
+
+---- Preparación ----
+  [OK]    login admin                                                    HTTP 200
+  [OK]    login doc_ramirez                                              HTTP 200
+  [OK]    login doc_torres                                               HTTP 200
+  [OK]    login est_ana                                                  HTTP 200
+  [OK]    login est_bruno                                                HTTP 200
+  [OK]    login est_diego                                                HTTP 200
+  [OK]    est_ana sube una entrega (la víctima)                         HTTP 201
+          ID de la entrega de est_ana: 6fc50e7e-ba38-49d2-a026-f23a11bd8c5f
+
+---- Estudiante B (est_bruno) intenta usar el ID de la entrega de A ----
+  [OK]    ver metadatos                                                  HTTP 404
+  [OK]    descargar el archivo                                           HTTP 404
+  [OK]    ver el resultado                                               HTTP 404
+  [OK]    reemplazarla                                                   HTTP 404
+  [OK]    eliminarla                                                     HTTP 404
+  [OK]    no aparece en el listado de est_bruno
+  [OK]    ID inexistente (misma respuesta: no se puede enumerar)         HTTP 404
+
+---- Docente de OTRO curso (doc_torres, BD-201) ----
+  [OK]    descargar entrega de SO-101                                    HTTP 404
+  [OK]    ver su trazabilidad                                            HTTP 404
+  [OK]    otorgar prórroga en un curso ajeno                            HTTP 404
+
+---- Control positivo: el docente del curso (doc_ramirez) sí puede ----
+  [OK]    descargar la entrega                                           HTTP 200
+
+---- Separación de funciones: el Admin TI no ve contenidos ----
+  [OK]    admin ve METADATOS                                             HTTP 200
+  [OK]    admin intenta descargar el archivo                             HTTP 403
+  [OK]    admin intenta ver el resultado                                 HTTP 403
+
+---- Estudiante no matriculado (est_diego no está en SO-101) ----
+  [OK]    subir a una actividad de SO-101                                HTTP 404
+  [OK]    ver las actividades de SO-101                                  HTTP 404
+
+---- Escalada de privilegios ----
+  [OK]    estudiante -> /api/admin/usuarios                              HTTP 403
+  [OK]    estudiante intenta crearse un admin                            HTTP 403
+
+---- Todo quedó en la auditoría como DENEGADO ----
+  [OK]    admin consulta los denegados sobre la entrega                  HTTP 200
+          2026-11-22T23:45:17  admin        resultado:ver        DENEGADO  rol_sin_permiso
+          2026-11-22T23:45:17  admin        entrega:descargar    DENEGADO  rol_sin_permiso
+          2026-11-22T23:45:17  doc_torres   trazabilidad:ver     DENEGADO  curso_ajeno
+          2026-11-22T23:45:17  doc_torres   entrega:descargar    DENEGADO  entrega_ajena
+          2026-11-22T23:45:17  est_bruno    entrega:eliminar     DENEGADO  entrega_ajena
+          2026-11-22T23:45:17  est_bruno    entrega:reemplazar   DENEGADO  entrega_ajena
+          2026-11-22T23:45:17  est_bruno    resultado:ver        DENEGADO  entrega_ajena
+          2026-11-22T23:45:17  est_bruno    entrega:descargar    DENEGADO  entrega_ajena
+          2026-11-22T23:45:16  est_bruno    entrega:metadatos    DENEGADO  entrega_ajena
+  [OK]    al menos 9 intentos denegados registrados sobre esa entrega (9)
+
+== RESUMEN: 27 correctas, 0 fallidas ==
+Evidencia guardada en: /opt/entregasegura/docs/evidencias/aislamiento_20261122_234516.txt
