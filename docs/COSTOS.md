@@ -10,7 +10,7 @@ retraso): esta bitácora es la alerta temprana. Se llena **en cada sesión** en 
 
 | Fecha | Saldo inicial (panel) | Hora inicio | Hora fin | Horas EC2 | Qué se hizo | Estado al salir (¿EC2 stopped? ¿EIP?) |
 |-------|-----------------------|-------------|----------|-----------|-------------|-------------------------------------|
-| 2026-11-21 | _(pendiente: anotar)_ | — | — | 0 | Desarrollo local completo (fases 1–6 y pruebas locales). Sin uso de AWS. | Sin recursos creados |
+| 2026-11-21 | _(pendiente: anotar)_ | 19:30 | — | 0 | Fases 1–6 en local. Fase 0.2: auditoría de la cuenta (`docs/evidencias/aws_auditoria_inicial_*.txt`): ningún recurso activo con costo; solo infraestructura del propio lab y un stack de ECS vacío (clúster INACTIVE) de un lab anterior. | Sin recursos creados |
 
 ## Precios de referencia (us-east-1)
 

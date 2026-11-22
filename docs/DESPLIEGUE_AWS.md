@@ -11,6 +11,17 @@ Start Lab → EC2: Start instance → anotar IP pública → trabajar → anotar
 Si la instancia queda *running* al terminar la sesión, el Learner Lab la vuelve a encender sola en la
 siguiente, aunque abras el lab para otra materia. **Párala siempre a mano.**
 
+## Conectar el AWS CLI de tu PC (opcional, una vez por sesión)
+
+Así puedes usar `aws ...` desde tu terminal en vez de la del lab.
+1. Learner Lab: **Start Lab** → espera el círculo verde → **AWS Details** → **AWS CLI: Show**.
+2. Copia el bloque completo (empieza por `[default]`).
+3. En tu PC: `./scripts/conectar_aws_lab.sh`, pega el bloque, pulsa Enter y luego `Ctrl+D`.
+
+El script guarda las credenciales en `~/.aws/credentials` (perfil `default`, permisos 600) con región
+`us-east-1`, conserva tus otros perfiles y comprueba la conexión. Las credenciales **caducan al terminar
+la sesión del lab**: en cada sesión nueva se repite. No las pegues en chats ni las subas a git.
+
 ## 1. Lanzar la instancia (una sola vez)
 
 En la consola: **EC2 → Instances → Launch instances**.
@@ -51,19 +62,17 @@ sudo apt update && sudo apt install -y docker.io docker-compose-v2 git ufw pytho
 sudo systemctl enable --now docker
 ```
 
-El repositorio es privado. Lo más seguro es una **deploy key de solo lectura**:
-```bash
-ssh-keygen -t ed25519 -N '' -f ~/.ssh/entregasegura_deploy -C entregasegura-ec2
-cat ~/.ssh/entregasegura_deploy.pub
-```
-Copia esa línea en GitHub: **repo → Settings → Deploy keys → Add deploy key**, sin marcar
-*Allow write access*. Después:
+El repositorio es público, así que basta con clonarlo:
 ```bash
 sudo mkdir -p /opt/entregasegura && sudo chown ubuntu:ubuntu /opt/entregasegura
-GIT_SSH_COMMAND="ssh -i ~/.ssh/entregasegura_deploy -o IdentitiesOnly=yes" \
-  git clone git@github.com:<usuario>/<repo>.git /opt/entregasegura
+git clone https://github.com/edwarfonseca/proyecto_os_250.git /opt/entregasegura
 cd /opt/entregasegura
 ```
+*Si algún día el repositorio pasa a privado*, usa una **deploy key de solo lectura**:
+`ssh-keygen -t ed25519 -N '' -f ~/.ssh/entregasegura_deploy`, pega el `.pub` en
+**repo → Settings → Deploy keys** (sin *Allow write access*) y clona con
+`GIT_SSH_COMMAND="ssh -i ~/.ssh/entregasegura_deploy -o IdentitiesOnly=yes" git clone git@github.com:edwarfonseca/proyecto_os_250.git /opt/entregasegura`.
+`scripts/deploy.sh` ya usa esa llave si existe.
 *Alternativa sin GitHub:* desde tu PC, `rsync -av --exclude .env --exclude backups -e "ssh -i labsuser.pem" ./ ubuntu@<IP>:/opt/entregasegura/`.
 
 ## 4. Secretos, hardening y despliegue

@@ -9,7 +9,9 @@
 set -uo pipefail
 REGIONES="${REGIONES:-us-east-1 us-west-2}"
 
-echo "Cuenta: $(aws sts get-caller-identity --query Account --output text 2>/dev/null || echo 'SIN CREDENCIALES')"
+# El número de cuenta se muestra enmascarado: la salida suele acabar en el repositorio.
+CUENTA="$(aws sts get-caller-identity --query Account --output text 2>/dev/null || echo 'SIN-CREDENCIALES')"
+echo "Cuenta: ********${CUENTA: -4}"
 for r in $REGIONES; do
   echo
   echo "================ Región $r ================"

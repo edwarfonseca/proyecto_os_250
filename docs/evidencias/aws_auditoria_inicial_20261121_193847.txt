@@ -1,0 +1,37 @@
+== Fase 0.2 · Auditoría inicial de la cuenta AWS · 2026-11-21 19:38 -05 ==
+(ejecutado desde el PC con el AWS CLI conectado al Learner Lab; número de cuenta enmascarado)
+
+Cuenta: ********4509
+
+================ Región us-east-1 ================
+-- Instancias EC2 (running cobra cómputo; stopped solo cobra disco)
+-- Volúmenes EBS (cobran SIEMPRE; 'available' = huérfano)
+-- Elastic IPs (cobran aunque la instancia esté apagada)
+-- Snapshots propios
+-- NAT Gateways (MUY caros)
+-- Load Balancers
+-- Bases de datos RDS
+
+================ Región us-west-2 ================
+-- Instancias EC2 (running cobra cómputo; stopped solo cobra disco)
+-- Volúmenes EBS (cobran SIEMPRE; 'available' = huérfano)
+-- Elastic IPs (cobran aunque la instancia esté apagada)
+-- Snapshots propios
+-- NAT Gateways (MUY caros)
+-- Load Balancers
+-- Bases de datos RDS
+
+================ Global ================
+-- Buckets S3
+
+Listo. Copia esta salida a docs/COSTOS.md o a docs/evidencias/.
+
+== Revisión ampliada (us-east-1 y us-west-2) ==
+DynamoDB, ECR, ECS (clústeres activos), EKS, ElastiCache, SageMaker, Secrets Manager: nada
+Security groups distintos de 'default': ninguno · Key pairs: vockey (del lab)
+Lambda: ModLabRole, RedshiftEventSubscription, RedshiftOverwatch, RoleCreationFunction, MainMonitoringFunction -> infraestructura propia del Learner Lab (no se toca)
+CloudFormation: stack del Learner Lab ('associate Learner Lab template') -> no se toca
+CloudFormation: ECS-Console-V2-Service-ecs-demo-svc-ecs-demo-cluster-* (creado 2026-11-20) -> su clúster y servicio están INACTIVE con 0 tareas: no genera costo
+CloudWatch Logs: /aws/lambda/procesamiento_cola (4,7 KB, de un laboratorio anterior) -> costo despreciable
+
+CONCLUSIÓN: ningún recurso activo genera costo. Cuenta lista para el proyecto.
