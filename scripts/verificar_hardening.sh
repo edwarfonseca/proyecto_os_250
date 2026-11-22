@@ -46,7 +46,10 @@ API_PW="$(leer_env APP_API_DB_PASSWORD)"
 OUT="$($DC exec -T -e PGPASSWORD="$API_PW" db psql -h 127.0.0.1 -U app_api -d "$DBNAME" -c 'DELETE FROM audit_log' 2>&1)"
 echo "          app_api> DELETE FROM audit_log  ->  $OUT"
 verificar '[[ "$OUT" == *"permission denied"* ]]' "la aplicación (app_api) no puede borrar la auditoría"
-OUT="$($DC exec -T db psql -U postgres -d "$DBNAME" -c "UPDATE audit_log SET accion='x' WHERE id=1" 2>&1)"
+# Se escribe un registro propio (queda a la vista como "verificacion:inmutabilidad") y se
+# intenta alterar ESE registro: así la prueba no depende de que la tabla ya tenga datos.
+$DC exec -T db psql -U postgres -d "$DBNAME" -qc "INSERT INTO audit_log (username, rol, accion, resultado, detalle) VALUES ('verificador', 'sistema', 'verificacion:inmutabilidad', 'PERMITIDO', '{\"script\": \"verificar_hardening.sh\"}')" >/dev/null
+OUT="$($DC exec -T db psql -U postgres -d "$DBNAME" -c "UPDATE audit_log SET accion='alterado' WHERE id = (SELECT max(id) FROM audit_log WHERE accion='verificacion:inmutabilidad')" 2>&1)"
 echo "          postgres> UPDATE audit_log ...  ->  $(echo "$OUT" | head -1)"
 verificar '[[ "$OUT" == *"solo inserción"* ]]' "ni el superusuario puede modificarla sin quitar el trigger"
 echo "          Permisos sobre audit_log:"
