@@ -2,6 +2,7 @@
 // Conexión a PostgreSQL con el rol de mínimo privilegio "app_api".
 const { Pool } = require('pg');
 const config = require('./config');
+const log = require('./logger');
 
 const pool = new Pool({
   host: config.db.host,
@@ -13,6 +14,11 @@ const pool = new Pool({
   idleTimeoutMillis: 30000,
   connectionTimeoutMillis: 5000,
 });
+
+// Si PostgreSQL se reinicia, las conexiones inactivas del pool reciben un error.
+// Sin este manejador, Node lo trataría como una excepción no capturada y la API
+// se caería; con él, el pool descarta esa conexión y abre otra en la siguiente consulta.
+pool.on('error', (err) => log.error({ err: err.message }, 'se perdió una conexión inactiva con PostgreSQL'));
 
 // Ejecuta fn(client) dentro de una transacción.
 async function transaccion(fn) {
