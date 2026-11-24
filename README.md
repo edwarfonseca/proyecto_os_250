@@ -4,6 +4,9 @@ Plataforma segura de recepción y análisis automático de entregas académicas 
 **Corporación Educativa Altiplano (CEA)**, una institución ficticia.
 Proyecto final de Sistemas Operativos · UPTC Seccional Sogamoso · 2026.
 
+- **Aplicación en línea:** https://entregasegura-uptc.duckdns.org (disponible mientras la instancia de AWS está encendida)
+- **Informe técnico (IEEE):** [docs/informe/EntregaSegura_IEEE.pdf](docs/informe/EntregaSegura_IEEE.pdf)
+
 Los estudiantes suben trabajos en texto (`.txt`, `.md`, `.csv`, `.json`, máx. 5 MB). Un
 worker en segundo plano calcula la huella SHA-256, las estadísticas del texto y detecta
 entregas idénticas. Los docentes revisan las entregas de sus cursos. Ningún estudiante
