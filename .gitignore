@@ -23,3 +23,7 @@ backups/
 docs/informe/*.log
 docs/informe/*.aux
 docs/informe/*.out
+
+# Documentos de trabajo internos (no se publican)
+docs/ROADMAP.md
+docs/guia-sustentacion.md

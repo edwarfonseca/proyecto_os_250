@@ -66,7 +66,7 @@ contenedores, Docker, \textit{cgroups}, control de acceso, auditoría, PostgreSQ
 
 La Corporación Educativa Altiplano (CEA) es una institución ficticia de educación técnica con tres programas. Sus estudiantes entregan informes, código y datos en archivos de texto, y sus docentes necesitan recibirlos con hora certificada, obtener un análisis automático y tener garantías de integridad. El caso parte de tres incidentes previos: un estudiante descargó la entrega de un compañero cambiando el identificador en la URL (\textit{Insecure Direct Object Reference}, la familia de fallos que encabeza el OWASP Top~10 de 2021~\cite{owasp-a01}); se aceptaron entregas fuera de plazo sin dejar rastro; y un archivo muy grande saturó el servidor.
 
-El objetivo del proyecto es construir una plataforma que resuelva esas tres situaciones y que, al mismo tiempo, haga visibles los conceptos del curso de Sistemas Operativos: procesos y usuarios de Linux, aislamiento con espacios de nombres y \textit{cgroups}, planificación de CPU, persistencia, procesamiento concurrente y endurecimiento del sistema~\cite{silberschatz,tanenbaum}. Las contribuciones son:
+El objetivo del proyecto es construir una plataforma que resuelva esas tres situaciones y que, al mismo tiempo, haga visibles los conceptos del curso de Sistemas Operativos: procesos y usuarios de Linux, aislamiento con espacios de nombres~\cite{man-namespaces} y \textit{cgroups}~\cite{kernel-cgroup2}, planificación de CPU, persistencia, procesamiento concurrente y endurecimiento del sistema~\cite{silberschatz,tanenbaum}. Las contribuciones son:
 \begin{itemize}
 \item Un modelo de tres roles con separación de funciones: el Administrador TI gestiona la plataforma, pero no puede leer el contenido de las entregas.
 \item La regla RN-1 de cierre con prórroga individual auditada, verificada en el servidor.
@@ -113,7 +113,7 @@ Si dos estudiantes distintos entregan archivos con el mismo SHA-256 en la misma 
 % =====================================================================
 \section{Arquitectura}\label{sec:arq}
 
-La Fig.~\ref{fig:arq} muestra el despliegue y la Tabla~\ref{tab:servicios}, los servicios. Todo corre en una sola instancia EC2 \cod{t3.small} (2~vCPU, 2~GiB) con Ubuntu Server 24.04 en \cod{us-east-1}. Solo el proxy publica puertos: el 443 (HTTPS, al 8443 de Nginx) y el 80, que únicamente redirige a HTTPS. El servicio se publica en \cod{entregasegura-uptc.duckdns.org}, un subdominio gratuito que sigue a la IP pública en cada arranque, y Nginx termina TLS con un certificado de Let's Encrypt. La API está conectada a dos redes de Docker: \cod{edge}, para que el proxy la alcance, e \cod{internal}, para hablar con la base de datos. El worker y la base de datos solo están en \cod{internal}, una red declarada con \cod{internal: true} y por tanto sin salida a Internet.
+La Fig.~\ref{fig:arq} muestra el despliegue y la Tabla~\ref{tab:servicios}, los servicios. Todo corre en una sola instancia EC2 \cod{t3.small} (2~vCPU, 2~GiB) con Ubuntu Server 24.04 en \cod{us-east-1}. El modelo de servicio es \textbf{IaaS} (infraestructura como servicio)~\cite{nist145}: AWS entrega la máquina virtual, la red y el disco, y el equipo administra el sistema operativo, Docker y la aplicación. Se eligió frente a PaaS o SaaS porque el curso exige mostrar y endurecer el propio sistema operativo (usuarios, procesos, \textit{cgroups} y cortafuegos), algo que un servicio gestionado oculta. Solo el proxy publica puertos: el 443 (HTTPS, al 8443 de Nginx) y el 80, que únicamente redirige a HTTPS. El servicio se publica en \cod{entregasegura-uptc.duckdns.org}, un subdominio gratuito que sigue a la IP pública en cada arranque, y Nginx termina TLS~\cite{rfc8446} con un certificado de Let's Encrypt, obtenido y renovado con el protocolo ACME~\cite{rfc8555}. La API está conectada a dos redes de Docker: \cod{edge}, para que el proxy la alcance, e \cod{internal}, para hablar con la base de datos. El worker y la base de datos solo están en \cod{internal}, una red declarada con \cod{internal: true} y por tanto sin salida a Internet.
 
 \begin{figure*}[!t]
 \centering
@@ -233,7 +233,7 @@ El proveedor de Internet del equipo usa CGNAT: cada conexión sale por una IP di
 % =====================================================================
 \section{Seguridad y endurecimiento}\label{sec:seg}
 
-La Tabla~\ref{tab:hardening} resume las medidas y cómo se verifican. El script \cod{verificar\_hardening.sh} reúne 14 comprobaciones automáticas, que pasan en local y en AWS; en AWS añade cinco sobre HTTPS (19/19).
+La Tabla~\ref{tab:hardening} resume las medidas y cómo se verifican. El script \cod{verificar\_hardening.sh} reúne 14 comprobaciones automáticas, que pasan en local y en AWS; en AWS añade cinco sobre HTTPS (19/19), entre ellas la cabecera HSTS, que obliga al navegador a usar siempre HTTPS~\cite{rfc6797}.
 
 \begin{table}[!t]
 \caption{Medidas de endurecimiento y su evidencia}\label{tab:hardening}
@@ -447,6 +447,11 @@ Con los precios de lista de \cod{us-east-1} (0,0208~USD/h la instancia, 0,005~US
 
 EntregaSegura resuelve los tres incidentes del caso. El acceso a recursos ajenos se bloquea con la comprobación de propiedad y queda auditado; las entregas fuera de plazo se rechazan con RN-1 y toda excepción deja rastro; y los archivos grandes o maliciosos se detienen en tres capas sin afectar al servicio. El proyecto muestra conceptos de sistemas operativos con evidencias medibles: procesos sin privilegios, aislamiento de red y de sistema de archivos, límites por \textit{cgroups} cuyo efecto se observa en la prueba de carga, concurrencia segura mediante bloqueo de filas y recuperación ante señales y caídas. Medir en la nube aportó un hallazgo que la prueba local no mostraba: en una instancia de rendimiento variable, el resultado depende tanto de la cuota de CPU del contenedor como del saldo de créditos de la instancia, y hay que controlar ambos para interpretar los números correctamente.
 
+\section*{Repositorio del proyecto}
+El código fuente completo, los scripts de despliegue y de pruebas, las evidencias y este informe están disponibles en:
+\begin{center}\url{https://github.com/edwarfonseca/proyecto_os_250}\end{center}
+El archivo \cod{README.md} explica cómo levantar el sistema en local con \cod{docker compose up -d --build} y cómo reproducir las siete baterías de pruebas.
+
 % =====================================================================
 \begin{thebibliography}{99}
 \bibitem{silberschatz} A. Silberschatz, P. B. Galvin y G. Gagne, \textit{Operating System Concepts}, 10.\textsuperscript{a} ed. Hoboken, NJ, EE.~UU.: Wiley, 2018.
@@ -465,6 +470,12 @@ EntregaSegura resuelve los tres incidentes del caso. El acceso a recursos ajenos
 \bibitem{compose-deploy} Docker Inc., ``Compose Deploy Specification,'' \textit{Docker Docs}. [En línea]. Disponible: \url{https://docs.docker.com/reference/compose-file/deploy/}
 \bibitem{aws-burst} Amazon Web Services, ``Burstable performance instances,'' \textit{Amazon EC2 User Guide}. [En línea]. Disponible: \url{https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/burstable-performance-instances.html}
 \bibitem{aws-std} Amazon Web Services, ``Key concepts for burstable instances in standard mode,'' \textit{Amazon EC2 User Guide}. [En línea]. Disponible: \url{https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/burstable-performance-instances-standard-mode-concepts.html}
+\bibitem{nist145} P. Mell y T. Grance, ``The NIST Definition of Cloud Computing,'' NIST, Gaithersburg, MD, EE.~UU., SP 800-145, sep. 2011.
+\bibitem{man-namespaces} M. Kerrisk, ``namespaces(7) -- overview of Linux namespaces,'' \textit{Linux Programmer's Manual}. [En línea]. Disponible: \url{https://man7.org/linux/man-pages/man7/namespaces.7.html}
+\bibitem{kernel-cgroup2} T. Heo, ``Control Group v2,'' \textit{The Linux Kernel Documentation}. [En línea]. Disponible: \url{https://docs.kernel.org/admin-guide/cgroup-v2.html}
+\bibitem{rfc8446} E. Rescorla, ``The Transport Layer Security (TLS) Protocol Version 1.3,'' RFC 8446, IETF, ago. 2018.
+\bibitem{rfc8555} R. Barnes, J. Hoffman-Andrews, D. McCarney y J. Kasten, ``Automatic Certificate Management Environment (ACME),'' RFC 8555, IETF, mar. 2019.
+\bibitem{rfc6797} J. Hodges, C. Jackson y A. Barth, ``HTTP Strict Transport Security (HSTS),'' RFC 6797, IETF, nov. 2012.
 \end{thebibliography}
 
 \end{document}

@@ -25,7 +25,7 @@ Internet ──:80──► proxy (Nginx sin privilegios) ──► api (Node/Ex
 | `worker` | `node:22-alpine` | Cola en PostgreSQL con `FOR UPDATE SKIP LOCKED`, análisis, reintentos y recuperación | 0.50 CPU · 256 MB |
 | `db` | `postgres:16-alpine` | Usuarios, cursos, entregas, cola de trabajos y auditoría append-only | 0.50 CPU · 384 MB |
 
-El detalle (decisiones D1–D6, modelo de datos y costos) está en [docs/ROADMAP.md](docs/ROADMAP.md).
+El detalle (decisiones de diseño, modelo de datos, pruebas y costos) está en el informe [docs/informe/EntregaSegura_IEEE.pdf](docs/informe/EntregaSegura_IEEE.pdf).
 El **documento técnico en formato IEEE** está en [docs/informe/EntregaSegura_IEEE.pdf](docs/informe/EntregaSegura_IEEE.pdf)
 (fuente LaTeX en `docs/informe/informe.tex`; se regenera con `./docs/informe/compilar.sh`, que usa Docker).
 El diagrama está en [docs/diagrama/arquitectura.md](docs/diagrama/arquitectura.md).
